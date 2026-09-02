@@ -1,0 +1,17 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Vercel project linkage + pulled OIDC tokens
+.vercel
+
+# Dependencies
+node_modules/
+
+# Third-party reference clones (each has its own .git history)
+repos/
+
+# OS / editor noise
+.DS_Store
+*.log

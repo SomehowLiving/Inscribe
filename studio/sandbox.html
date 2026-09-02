@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Sandbox</title>
+  <style>body{font-family:monospace;font-size:12px;color:#333;margin:8px}</style>
+</head>
+<body>
+  <div id="output"></div>
+<script>
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'forge-code-execute') {
+    const logs = [];
+    const origLog = console.log;
+    const origError = console.error;
+    console.log = (...args) => logs.push({ type: 'log', data: args.join(' ') });
+    console.error = (...args) => logs.push({ type: 'error', data: args.join(' ') });
+
+    let result, error;
+    try {
+      result = eval(e.data.code);
+      if (result === undefined) result = 'undefined';
+      if (result === null) result = 'null';
+      result = String(result);
+    } catch (err) {
+      error = err.message;
+      result = '';
+    }
+
+    console.log = origLog;
+    console.error = origError;
+
+    e.source.postMessage({
+      type: 'forge-code-result',
+      result,
+      error,
+      logs,
+    }, '*');
+  }
+});
+</script>
+</body>
+</html>
