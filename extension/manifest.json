@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "AgentForge Universal",
+  "version": "0.1.0",
+  "description": "Turns any website into an agent-operable surface: synthesizes WebMCP tools from the live DOM, shows every call in an inspector, and requires your confirmation for anything it inferred.",
+  "permissions": ["storage", "tabs", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Toggle AgentForge"
+  },
+  "commands": {
+    "toggle-overlay": {
+      "suggested_key": { "default": "Ctrl+Shift+F", "mac": "Command+Shift+F" },
+      "description": "Toggle the AgentForge overlay"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["src/page/bootstrap.js", "src/page/synthesize.js", "src/page/registrar.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["src/isolated/relay.js", "src/isolated/overlay.js"],
+      "run_at": "document_idle",
+      "world": "ISOLATED",
+      "all_frames": false
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}
