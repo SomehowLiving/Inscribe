@@ -1,5 +1,5 @@
 /**
- * AgentForge — overlay panel (ISOLATED world).
+ * Inscribe — overlay panel (ISOLATED world).
  *
  * The human-facing half of the thesis: the agent operates the page through
  * tools, and everything it does shows up here as it happens. Rendered into a
@@ -8,90 +8,132 @@
 (function () {
   'use strict';
 
-  if (window.__agentforgeOverlay) return;
+  if (window.__inscribeOverlay) return;
 
   const host = document.createElement('div');
-  host.id = '__agentforge_root';
+  host.id = '__inscribe_root';
   host.style.cssText = 'all:initial;position:fixed;z-index:2147483647;top:0;right:0;';
   const root = host.attachShadow({ mode: 'closed' });
 
   root.innerHTML = `
     <style>
+      /* Inscribe overlay — ink on paper. No gradients, no glow, no emoji:
+         it should read like a printer's slip laid over the page. System serif
+         only, since we can't fetch fonts on someone else's origin. */
       :host { all: initial; }
-      * { box-sizing: border-box; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+      * { box-sizing: border-box; }
+      :root, .panel, .launcher, .confirm {
+        --ink:#17140f; --raise:#1e1a14; --sink:#100e0a;
+        --rule:#302a21; --soft:#241f19;
+        --paper:#ece5d8; --mute:#a2988a; --faint:#6e665a;
+        --red:#c8552b; --sage:#8a9a72; --amber:#c79a3e; --blood:#b0453a;
+        --serif:'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif;
+        --sans:'IBM Plex Sans',ui-sans-serif,system-ui,sans-serif;
+        --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+      }
       .launcher {
-        position: fixed; top: 12px; right: 12px; width: 40px; height: 40px;
-        border-radius: 10px; border: 1px solid #2a2a3a; cursor: pointer;
-        background: linear-gradient(135deg, #0d0d14, #16161f); color: #00d4ff;
-        font-size: 17px; display: grid; place-items: center;
-        box-shadow: 0 6px 20px rgba(0,0,0,.45);
+        position:fixed; top:14px; right:14px; width:34px; height:34px;
+        background:var(--ink); border:1px solid var(--rule); cursor:pointer;
+        color:var(--red); font-family:var(--serif); font-size:20px; line-height:1;
+        display:grid; place-items:center; border-radius:2px;
+        box-shadow:0 2px 10px rgba(0,0,0,.4);
       }
+      .launcher:hover { border-color:var(--faint); }
       .panel {
-        position: fixed; top: 12px; right: 12px; width: 360px; max-height: 86vh;
-        display: flex; flex-direction: column; overflow: hidden;
-        background: #0b0b11; color: #e6e6ee; border: 1px solid #2a2a3a;
-        border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,.55); font-size: 12px;
+        position:fixed; top:14px; right:14px; width:352px; max-height:88vh;
+        display:flex; flex-direction:column; overflow:hidden;
+        background:var(--ink); color:var(--paper);
+        border:1px solid var(--rule); border-top:2px solid var(--red);
+        border-radius:2px; box-shadow:0 10px 34px rgba(0,0,0,.5);
+        font-family:var(--sans); font-size:12.5px; line-height:1.5;
+        background-image:repeating-linear-gradient(90deg,rgba(236,229,216,.014) 0 1px,transparent 1px 3px);
       }
-      header { display:flex; align-items:center; justify-content:space-between;
-        padding: 9px 11px; border-bottom: 1px solid #2a2a3a; background: #10101a; }
-      .title { display:flex; align-items:center; gap:7px; font-weight:650; font-size:12px; }
-      .dot { width:7px; height:7px; border-radius:50%; background:#00ff88; box-shadow:0 0 7px #00ff88; }
-      .native { font-size:9px; text-transform:uppercase; letter-spacing:.08em;
-        padding:2px 6px; border-radius:4px; background:#1b1b28; color:#8b8ba7; }
-      .x { background:none;border:none;color:#8b8ba7;cursor:pointer;font-size:15px; }
-      .body { overflow-y:auto; padding: 9px 11px; }
-      h4 { margin: 8px 0 6px; font-size:9.5px; text-transform:uppercase;
-        letter-spacing:.09em; color:#8b8ba7; display:flex; justify-content:space-between; }
-      .tool { border:1px solid #23232f; background:#101019; border-radius:7px;
-        padding:7px 8px; margin-bottom:5px; }
-      .tool .n { font-family: ui-monospace, monospace; color:#00d4ff; font-size:11px;
-        word-break:break-all; }
-      .tool .d { color:#9b9bb3; margin-top:2px; line-height:1.35; }
-      .row { display:flex; gap:4px; align-items:center; margin-top:5px; flex-wrap:wrap; }
-      .badge { font-size:9px; padding:1.5px 5px; border-radius:4px; border:1px solid transparent; }
-      .declared { background:rgba(0,255,136,.1); color:#00ff88; border-color:rgba(0,255,136,.3); }
-      .inferred { background:rgba(255,170,0,.1); color:#ffaa00; border-color:rgba(255,170,0,.3); }
-      .sens { background:rgba(255,68,68,.1); color:#ff6b6b; border-color:rgba(255,68,68,.3); }
-      .conf { color:#7a7a94; font-size:9px; margin-left:auto; }
-      .empty { color:#6f6f88; padding:10px 0; line-height:1.5; }
-      .log { font-family: ui-monospace, monospace; font-size:10px; }
-      .log div { padding:4px 6px; border-left:2px solid #2a2a3a; background:#0f0f17;
-        margin-bottom:3px; border-radius:0 4px 4px 0; }
-      .log .t { color:#6f6f88; margin-right:6px; }
-      .confirm { position:fixed; inset:0; background:rgba(0,0,0,.72);
-        display:grid; place-items:center; padding:16px; }
-      .card { background:#12121c; border:1px solid #3a3a52; border-radius:11px;
-        padding:15px; width:330px; box-shadow:0 20px 50px rgba(0,0,0,.6); }
-      .card h3 { margin:0 0 8px; font-size:13px; color:#ffaa00; }
-      .card p { margin:0 0 9px; color:#b9b9cd; line-height:1.45; font-size:11.5px; }
-      .card pre { background:#0b0b12; border:1px solid #23232f; border-radius:6px;
-        padding:7px; font-size:10px; overflow:auto; max-height:130px; color:#c8c8dc; margin:0 0 11px; }
-      .acts { display:flex; gap:7px; justify-content:flex-end; }
-      button.b { padding:6px 12px; border-radius:6px; font-size:11.5px; cursor:pointer;
-        border:1px solid #2a2a3a; background:#1a1a26; color:#e6e6ee; }
-      button.ok { background:rgba(0,212,255,.14); border-color:#00d4ff; color:#00d4ff; font-weight:600; }
-      button.no { background:transparent; }
+      header {
+        display:flex; align-items:center; justify-content:space-between;
+        padding:9px 12px; border-bottom:1px solid var(--soft); background:var(--sink);
+      }
+      .title { display:flex; align-items:baseline; gap:8px; }
+      .title b { font-family:var(--serif); font-weight:400; font-size:17px; letter-spacing:.005em; }
+      .nib { width:6px; height:6px; background:var(--sage);
+        clip-path:polygon(50% 0,100% 100%,0 100%); align-self:center; }
+      .native { font-family:var(--mono); font-size:9px; letter-spacing:.11em;
+        text-transform:uppercase; color:var(--faint); }
+      .x { background:none;border:none;color:var(--faint);cursor:pointer;
+        font-family:var(--mono);font-size:14px; }
+      .x:hover { color:var(--red); }
+      .body { overflow-y:auto; padding:0 12px 12px; }
+      h4 { margin:14px 0 8px; font-size:9px; font-weight:600;
+        letter-spacing:.16em; text-transform:uppercase; color:var(--faint);
+        display:flex; justify-content:space-between; align-items:center;
+        padding-bottom:6px; border-bottom:1px solid var(--soft); }
+      h4 span { font-family:var(--mono); font-size:10px; color:var(--red);
+        letter-spacing:0; font-variant-numeric:tabular-nums; }
+      .tool { padding:8px 0; border-bottom:1px solid var(--soft); }
+      .tool:last-child { border-bottom:none; }
+      .tool .n { font-family:var(--mono); font-size:11px; color:var(--paper); word-break:break-all; }
+      .tool .n::before { content:'\\00a7 '; color:var(--red); }
+      .tool .d { color:var(--faint); margin-top:3px; font-size:11px; line-height:1.45; }
+      .row { display:flex; gap:6px; align-items:center; margin-top:6px; flex-wrap:wrap; }
+      .badge { font-family:var(--mono); font-size:9px; letter-spacing:.06em;
+        text-transform:uppercase; padding:1px 5px; border:1px solid; }
+      .declared { color:var(--sage); border-color:rgba(138,154,114,.45); }
+      .inferred { color:var(--amber); border-color:rgba(199,154,62,.45); }
+      .sens { color:#d99a92; border-color:rgba(176,69,58,.5); }
+      .conf { margin-left:auto; font-family:var(--mono); font-size:9.5px;
+        color:var(--faint); font-variant-numeric:tabular-nums; }
+      .empty { color:var(--faint); padding:9px 0; font-size:11.5px;
+        line-height:1.55; font-style:italic; }
+      .log { font-family:var(--mono); font-size:10.5px; }
+      .log div { display:flex; gap:7px; padding:4px 0 4px 8px;
+        border-left:2px solid var(--rule); color:var(--mute); }
+      .log .t { color:var(--faint); flex:none; font-variant-numeric:tabular-nums; }
+      .confirm { position:fixed; inset:0; background:rgba(16,14,10,.86);
+        display:grid; place-items:center; padding:18px; }
+      .card { background:var(--ink); border:1px solid var(--rule);
+        border-top:2px solid var(--amber); border-radius:2px;
+        padding:20px 22px; width:340px; box-shadow:0 12px 34px rgba(0,0,0,.55);
+        font-family:var(--sans); }
+      .card h3 { margin:0 0 9px; font-family:var(--serif); font-weight:400;
+        font-size:19px; color:var(--paper); }
+      .card p { margin:0 0 11px; color:var(--mute); line-height:1.55; font-size:12px; }
+      .card pre { background:var(--sink); border:1px solid var(--soft);
+        padding:8px 9px; font-family:var(--mono); font-size:10px; overflow:auto;
+        max-height:130px; color:var(--mute); margin:0 0 14px; border-radius:2px; }
+      .acts { display:flex; gap:8px; justify-content:flex-end; }
+      button.b { padding:6px 13px; font-family:var(--sans); font-size:12px;
+        border:1px solid var(--rule); background:transparent; color:var(--paper);
+        border-radius:2px; cursor:pointer; }
+      button.b:hover { border-color:var(--faint); }
+      button.ok { background:var(--red); border-color:var(--red);
+        color:#17140f; font-weight:600; }
       .hidden { display:none !important; }
-      footer { padding:7px 11px; border-top:1px solid #2a2a3a; background:#10101a;
-        display:flex; flex-direction:column; gap:6px; }
-      .frow { display:flex; gap:6px; }
-      footer button { padding:5px 9px; font-size:11px; border-radius:6px;
-        border:1px solid #2a2a3a; background:#1a1a26; color:#c8c8dc; cursor:pointer; }
-      footer button:disabled { opacity:.5; cursor:not-allowed; }
-      #run { background:rgba(0,212,255,.14); border-color:#00d4ff; color:#00d4ff; font-weight:600; }
-      #goal { flex:1; min-width:0; background:#0b0b12; border:1px solid #2a2a3a;
-        border-radius:6px; color:#e6e6ee; font-size:11.5px; padding:5px 8px; outline:none; }
-      #goal:focus { border-color:#00d4ff; }
-      #model { background:#0b0b12; border:1px solid #2a2a3a; border-radius:6px;
-        color:#c8c8dc; font-size:10px; padding:4px; max-width:150px; }
-      #status { font-size:10.5px; color:#8b8ba7; min-height:13px; line-height:1.35; }
-      #status.err { color:#ff6b6b; }
-      #status.ok { color:#00ff88; }
+      footer { padding:9px 12px 11px; border-top:1px solid var(--soft);
+        background:var(--sink); display:flex; flex-direction:column; gap:7px; }
+      .frow { display:flex; gap:7px; }
+      footer button { padding:6px 11px; font-family:var(--sans); font-size:11.5px;
+        border:1px solid var(--rule); background:transparent; color:var(--mute);
+        border-radius:2px; cursor:pointer; }
+      footer button:hover { border-color:var(--faint); color:var(--paper); }
+      footer button:disabled { opacity:.4; cursor:not-allowed; }
+      #run { background:var(--red); border-color:var(--red); color:#17140f; font-weight:600; }
+      #goal { flex:1; min-width:0; background:var(--ink); border:1px solid var(--rule);
+        border-radius:2px; color:var(--paper); font-family:var(--sans);
+        font-size:12.5px; padding:7px 9px; outline:none; }
+      #goal::placeholder { color:var(--faint); font-style:italic; }
+      #goal:focus { border-color:var(--red); }
+      #model { background:var(--ink); border:1px solid var(--rule); border-radius:2px;
+        color:var(--mute); font-family:var(--mono); font-size:10px;
+        padding:5px 6px; max-width:158px; outline:none; }
+      #model:focus { border-color:var(--red); }
+      #status { font-family:var(--mono); font-size:10px; color:var(--faint);
+        min-height:13px; line-height:1.4; }
+      #status.err { color:#d99a92; }
+      #status.ok { color:var(--sage); }
     </style>
-    <button class="launcher" title="AgentForge">◆</button>
+    <button class="launcher" title="Inscribe">I</button>
     <div class="panel hidden">
       <header>
-        <div class="title"><span class="dot"></span> AgentForge <span class="native" id="mode"></span></div>
+        <div class="title"><span class="nib"></span><b>Inscribe</b><span class="native" id="mode"></span></div>
         <button class="x" title="Close">×</button>
       </header>
       <div class="body">
@@ -118,7 +160,7 @@
     </div>
     <div class="confirm hidden" id="confirm">
       <div class="card">
-        <h3>Confirm inferred action</h3>
+        <h3>This one was inferred</h3>
         <p id="cmsg"></p>
         <pre id="cargs"></pre>
         <div class="acts">
@@ -135,7 +177,7 @@
 
   launcher.onclick = () => { panel.classList.remove('hidden'); launcher.classList.add('hidden'); };
   $('.x').onclick = () => { panel.classList.add('hidden'); launcher.classList.remove('hidden'); };
-  $('#rescan').onclick = () => window.__agentforgeRelay && window.__agentforgeRelay.rescan();
+  $('#rescan').onclick = () => window.__inscribeRelay && window.__inscribeRelay.rescan();
 
   function setStatus(text, cls) {
     const el = $('#status');
@@ -296,7 +338,7 @@
   function askConfirm(payload, done) {
     pendingConfirm = done;
     $('#cmsg').textContent =
-      `AgentForge inferred "${payload.name}" from this page's markup (${Math.round((payload.confidence || 0) * 100)}% confidence). ` +
+      `Inscribe inferred "${payload.name}" from this page's markup (${Math.round((payload.confidence || 0) * 100)}% confidence). ` +
       `It was not declared by the site, so it needs your approval before it touches anything.`;
     $('#cargs').textContent = JSON.stringify(payload.args || {}, null, 2);
     $('#confirm').classList.remove('hidden');
@@ -313,11 +355,11 @@
   $('#cyes').onclick = () => settle(true);
   $('#cno').onclick = () => settle(false);
 
-  window.__agentforgeOverlay = { askConfirm, toggle: () => launcher.click() };
+  window.__inscribeOverlay = { askConfirm, toggle: () => launcher.click() };
 
   function mount() {
     (document.body || document.documentElement).appendChild(host);
-    if (window.__agentforgeRelay) window.__agentforgeRelay.subscribe(render);
+    if (window.__inscribeRelay) window.__inscribeRelay.subscribe(render);
     loadModels();
   }
 

@@ -1,7 +1,7 @@
 /**
- * AgentForge Studio — WebMCP tool registry.
+ * Inscribe — WebMCP tool registry.
  *
- * Exposes the whole IDE as `forge.*` tools over the W3C WebMCP surface.
+ * Exposes the whole IDE as `inscribe.*` tools over the W3C WebMCP surface.
  * `document.modelContext` is the canonical API in the current spec
  * (webmachinelearning/webmcp, Chrome 149 / Edge 150 origin trials), so it is
  * preferred; `navigator.modelContext` is checked only as a fallback for
@@ -43,7 +43,7 @@
     }
   }
 
-  class ForgeWebMCP {
+  class InscribeWebMCP {
     constructor(vfs, app) {
       this.vfs = vfs;
       this.app = app;
@@ -145,21 +145,21 @@
       const app = this.app;
 
       this.define(
-        'forge.file.list',
+        'inscribe.file.list',
         'List files and directories under a given path.',
         { type: 'object', properties: { path: { type: 'string' } } },
         ({ path }) => vfs.list(path || '/')
       );
 
       this.define(
-        'forge.file.read',
+        'inscribe.file.read',
         'Read the contents of a single file.',
         { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
         ({ path }) => vfs.read(path)
       );
 
       this.define(
-        'forge.file.write',
+        'inscribe.file.write',
         'Create or overwrite a file with new content.',
         {
           type: 'object',
@@ -170,28 +170,28 @@
       );
 
       this.define(
-        'forge.file.delete',
+        'inscribe.file.delete',
         'Delete a file or directory (recursively).',
         { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
         ({ path }) => vfs.delete(path)
       );
 
       this.define(
-        'forge.file.mkdir',
+        'inscribe.file.mkdir',
         'Create a directory.',
         { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
         ({ path }) => vfs.mkdir(path)
       );
 
       this.define(
-        'forge.code.execute',
+        'inscribe.code.execute',
         'Execute a JavaScript snippet in the sandboxed preview iframe and return console output plus the result.',
         { type: 'object', properties: { code: { type: 'string' } }, required: ['code'] },
         ({ code }) => this.executeInSandbox(code)
       );
 
       this.define(
-        'forge.preview.refresh',
+        'inscribe.preview.refresh',
         'Re-render the live preview from the current project files.',
         { type: 'object', properties: { path: { type: 'string' } } },
         ({ path }) => {
@@ -201,14 +201,14 @@
       );
 
       this.define(
-        'forge.terminal.exec',
+        'inscribe.terminal.exec',
         'Actually run a shell command, isolated in an ephemeral Vercel Sandbox VM (not this server), and print its real output to the Terminal panel.',
         { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] },
         ({ command }) => this.execCommand(command)
       );
 
       this.define(
-        'forge.chat.send',
+        'inscribe.chat.send',
         'Post a message into the Agent Chat panel, visible to the human.',
         {
           type: 'object',
@@ -225,11 +225,11 @@
       );
 
       this.define(
-        'forge.system.info',
-        'Return metadata about this AgentForge instance and available tools.',
+        'inscribe.system.info',
+        'Return metadata about this Inscribe instance and available tools.',
         { type: 'object', properties: {} },
         () => ({
-          name: 'AgentForge Studio',
+          name: 'Inscribe',
           version: '1.0.0',
           webmcpHost: this.usingPolyfillFallback ? 'local-fallback' : 'native-or-polyfill',
           toolCount: this.registrations.length,
@@ -237,7 +237,7 @@
       );
 
       this.define(
-        'forge.image.generate',
+        'inscribe.image.generate',
         'Generate a real image from a prompt (via an OpenRouter image model) and save it into the project. Falls back to a placeholder SVG gradient if no image model is configured or the call fails.',
         {
           type: 'object',
@@ -252,7 +252,7 @@
       );
 
       this.define(
-        'forge.deploy',
+        'inscribe.deploy',
         'Deploy the current project to a live Vercel URL. Falls back to a downloadable file-bundle summary if no deploy backend is configured.',
         {
           type: 'object',
@@ -389,7 +389,8 @@
   <text x="50%" y="50%" fill="rgba(255,255,255,0.85)" font-family="monospace" font-size="20"
         text-anchor="middle" dominant-baseline="middle">${this.escapeXml(prompt.slice(0, 60))}</text>
 </svg>`;
-      const path = `${dir}/${filename}`;
+      const base = filename.replace(/\.\w+$/, '');
+      const path = `${dir}/${base}.svg`;
       this.vfs.write(path, svg, 'svg');
       return { path, ok: true };
     }
@@ -401,5 +402,5 @@
     }
   }
 
-  window.ForgeWebMCP = ForgeWebMCP;
+  window.InscribeWebMCP = InscribeWebMCP;
 })();

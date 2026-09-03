@@ -1,5 +1,5 @@
 /**
- * AgentForge — DOM → WebMCP tool synthesis (MAIN world).
+ * Inscribe — DOM → WebMCP tool synthesis (MAIN world).
  *
  * This is the part the ecosystem hasn't shipped. The spec's position is
  * "annotate, don't infer": a <form> becomes a tool only if the author added
@@ -428,5 +428,5 @@
     return { candidates: deduped, stats, url: location.href, title: document.title };
   }
 
-  window.__agentforgeSynthesize = { scan, accessibleName, selectorFor };
+  window.__inscribeSynthesize = { scan, accessibleName, selectorFor };
 })();

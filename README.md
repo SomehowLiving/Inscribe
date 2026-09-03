@@ -1,8 +1,8 @@
-# AgentForge Studio
+# Inscribe
 
 An agent-native web IDE built on [WebMCP](https://github.com/webmachinelearning/webmcp). The
 file system, code execution, terminal, image generation and deployment aren't just UI features —
-they're a `forge.*` tool catalog registered via `document.modelContext`. A human can click
+they're a `inscribe.*` tool catalog registered via `document.modelContext`. A human can click
 around it, but an AI agent can *operate* it directly, and the human watches every tool call
 land in real time.
 
@@ -15,7 +15,7 @@ pixel positions, and simulate clicks; one CSS change breaks the flow. WebMCP inv
 the site *declares its capabilities* and the agent calls them by name with structured
 arguments.
 
-AgentForge Studio is that inversion applied to an IDE. The tool layer is primary; the UI is
+Inscribe is that inversion applied to an IDE. The tool layer is primary; the UI is
 a projection of it. Nothing happens in the interface that isn't also a tool call an agent
 could have made instead — which is what makes the human a genuine spectator and supervisor
 rather than a bystander.
@@ -24,14 +24,14 @@ rather than a bystander.
 
 | Tool | What it does |
 |---|---|
-| `forge.file.list` / `read` / `write` / `delete` / `mkdir` | CRUD on an in-browser virtual file system (localStorage-backed) |
-| `forge.code.execute` | Runs JS in a sandboxed iframe, captures console output |
-| `forge.preview.refresh` | Re-renders the live preview, inlining CSS/JS |
-| `forge.terminal.exec` | Runs a **real shell command** in an ephemeral [Vercel Sandbox](https://vercel.com/docs/vercel-sandbox) microVM — isolated from the server's own environment and secrets |
-| `forge.chat.send` | Posts into the human-visible Agent Chat panel |
-| `forge.system.info` | IDE metadata and tool count |
-| `forge.image.generate` | Real image generation via an OpenRouter image model; falls back to a placeholder SVG if unavailable |
-| `forge.deploy` | Creates a **real deployment** of what the agent built, via the Vercel REST API |
+| `inscribe.file.list` / `read` / `write` / `delete` / `mkdir` | CRUD on an in-browser virtual file system (localStorage-backed) |
+| `inscribe.code.execute` | Runs JS in a sandboxed iframe, captures console output |
+| `inscribe.preview.refresh` | Re-renders the live preview, inlining CSS/JS |
+| `inscribe.terminal.exec` | Runs a **real shell command** in an ephemeral [Vercel Sandbox](https://vercel.com/docs/vercel-sandbox) microVM — isolated from the server's own environment and secrets |
+| `inscribe.chat.send` | Posts into the human-visible Agent Chat panel |
+| `inscribe.system.info` | IDE metadata and tool count |
+| `inscribe.image.generate` | Real image generation via an OpenRouter image model; falls back to a placeholder SVG if unavailable |
+| `inscribe.deploy` | Creates a **real deployment** of what the agent built, via the Vercel REST API |
 
 ## Architecture
 
@@ -105,13 +105,13 @@ secondary material online is stale:
 
 ## Known limitations
 
-- `forge.deploy` uses a project-scoped token, so agent-built sites land as new deployments
+- `inscribe.deploy` uses a project-scoped token, so agent-built sites land as new deployments
   within one Vercel project rather than separate projects.
 - Real image generation needs OpenRouter credits; without them it silently falls back to a
   placeholder SVG.
 - The `/api/*` endpoints are unauthenticated. Fine for a demo; they'd need auth or rate
   limiting before any real exposure.
-- `forge.terminal.exec` is bounded (~20s, 8KB output) and its long-command cutoff comes from
+- `inscribe.terminal.exec` is bounded (~20s, 8KB output) and its long-command cutoff comes from
   the sandbox lifetime rather than the per-command timeout.
 
 ## License

@@ -1,4 +1,4 @@
-# AgentForge Universal (extension)
+# Inscribe Universal (extension)
 
 Turns **any** website into an agent-operable surface. Where a site declares its own
 WebMCP tools, we use those. Where it doesn't — which is almost everywhere — we
@@ -25,7 +25,7 @@ Three layers, because the page world and the extension can't touch each other:
 | `src/page/registrar.js` | MAIN | Register tools; execute them against the live DOM via captured selectors |
 | `src/isolated/relay.js` | ISOLATED | `window.postMessage` ↔ `chrome.runtime` port |
 | `src/isolated/overlay.js` | ISOLATED | Inspector panel + confirmation gate (closed shadow root) |
-| `src/background.js` | SW | Per-tab registry; agent loop via AgentForge Studio's `/api/agent` |
+| `src/background.js` | SW | Per-tab registry; agent loop via Inscribe's `/api/agent` |
 
 ## Trust model
 

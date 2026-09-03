@@ -1,6 +1,6 @@
 /**
  * A real, LLM-driven agent. Unlike demo-agent.js (a fixed script), this one
- * decides its own actions: it sends the live forge.* tool schemas and the
+ * decides its own actions: it sends the live inscribe.* tool schemas and the
  * running conversation to /api/agent, gets back either a tool call or a
  * final answer, and — for tool calls — actually executes them against the
  * real VFS/UI via webmcp.callTool(), then reports the result back to the
@@ -112,7 +112,7 @@ class RealAgent {
               output: { type: 'error-json', value: { message: err.message } },
             });
           }
-          if (call.toolName.startsWith('forge.file.')) {
+          if (call.toolName.startsWith('inscribe.file.')) {
             this.app.renderFileTree();
           }
         }

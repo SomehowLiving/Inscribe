@@ -1,31 +1,33 @@
 /**
- * AgentForge Studio — in-browser virtual file system.
+ * Inscribe — in-browser virtual file system.
  * Backed by localStorage so a project survives a reload; falls back to an
  * in-memory Map if storage is unavailable (private browsing, quota, etc).
  */
 (function () {
-  const STORAGE_KEY = 'agentforge:vfs:v1';
+  const STORAGE_KEY = 'inscribe:vfs:v1';
 
   const SEED = {
     '/welcome.md': {
       type: 'markdown',
       content:
-        '# Welcome to AgentForge Studio\n\n' +
-        'This IDE is agent-native: every action you can take by hand is also ' +
-        'exposed as a WebMCP tool under the `forge.*` namespace.\n\n' +
-        '- Click **Launch Demo Agent** to watch a scripted agent build a site ' +
-        'using nothing but tool calls.\n' +
-        '- Open the **WebMCP Inspector** (right panel) to see registered tools ' +
-        'and a live call log.\n' +
-        '- Files live under `/project` — that folder is what gets rendered in ' +
-        'the Preview tab and exported on deploy.\n',
+        '# Inscribe\n\n' +
+        'A workshop where the tools are the interface. Every action you can take ' +
+        'by hand is also a WebMCP tool under the `inscribe.*` namespace — so an ' +
+        'agent operates this editor the same way you do.\n\n' +
+        '- **Run scripted demo** (top right) replays a fixed sequence with no model ' +
+        'and no tokens spent. It proves the tool layer end to end.\n' +
+        '- **Dictation** (bottom right) hands a task to a real model. It reasons over ' +
+        'the tool schemas and calls them itself.\n' +
+        '- **Instrument** (right) lists every registered tool and enters each call in ' +
+        'the ledger as it happens.\n' +
+        '- Files under `/project` are what the preview renders and what a deploy ships.\n',
     },
     '/project/index.html': {
       type: 'html',
       content:
         '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n' +
         '<title>My Agent-Built Site</title>\n<link rel="stylesheet" href="style.css">\n' +
-        '</head>\n<body>\n<h1>Hello from AgentForge</h1>\n' +
+        '</head>\n<body>\n<h1>Hello from Inscribe</h1>\n' +
         '<p>Edit me, or ask an agent to.</p>\n<script src="app.js"></script>\n' +
         '</body>\n</html>\n',
     },

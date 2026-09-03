@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "AgentForge Universal",
+  "name": "Inscribe Universal",
   "version": "0.1.0",
   "description": "Turns any website into an agent-operable surface: synthesizes WebMCP tools from the live DOM, shows every call in an inspector, and requires your confirmation for anything it inferred.",
   "permissions": ["storage", "tabs", "activeTab", "scripting"],
@@ -10,12 +10,12 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Toggle AgentForge"
+    "default_title": "Toggle Inscribe"
   },
   "commands": {
     "toggle-overlay": {
       "suggested_key": { "default": "Ctrl+Shift+F", "mac": "Command+Shift+F" },
-      "description": "Toggle the AgentForge overlay"
+      "description": "Toggle the Inscribe overlay"
     }
   },
   "content_scripts": [

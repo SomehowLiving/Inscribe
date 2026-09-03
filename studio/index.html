@@ -3,101 +3,106 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AgentForge Studio — Agent-Native Web IDE</title>
+  <title>Inscribe — an agent-native workshop</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%2317140f'/><text x='16' y='23' font-family='Georgia,serif' font-size='22' fill='%23c8552b' text-anchor='middle'>I</text></svg>">
 </head>
 <body>
   <div id="app">
-    <header class="forge-header">
+    <header class="masthead">
       <div class="brand">
-        <span class="logo">🔥</span>
-        <div>
-          <h1>AgentForge Studio</h1>
-          <span class="badge">WebMCP Native</span>
+        <span class="colophon">I</span>
+        <div class="brand-text">
+          <h1>Inscribe</h1>
+          <p class="strap">An agent-native workshop</p>
         </div>
       </div>
-      <div class="header-actions">
-        <button id="btn-demo" class="btn btn-primary">▶ Launch Demo Agent</button>
-        <button id="btn-clear-log" class="btn btn-ghost">Clear Log</button>
-        <div class="status-indicator" id="webmcp-status">
-          <span class="dot"></span>
-          <span class="label">WebMCP Active</span>
+      <div class="masthead-actions">
+        <div class="standing" id="webmcp-status">
+          <span class="nib"></span>
+          <span class="label">WebMCP</span>
         </div>
+        <button id="btn-clear-log" class="btn btn-quiet">Clear log</button>
+        <button id="btn-demo" class="btn btn-ink">Run scripted demo</button>
       </div>
     </header>
 
     <div class="workspace">
-      <aside class="panel panel-files">
-        <div class="panel-header">
-          <span>📁 Files</span>
-          <button id="btn-new-file" class="btn-icon" title="New File">+</button>
+      <aside class="quire quire-files">
+        <div class="quire-head">
+          <span class="folio">Files</span>
+          <button id="btn-new-file" class="mark" title="New file">+</button>
         </div>
         <div id="file-tree" class="file-tree"></div>
       </aside>
 
-      <main class="panel panel-main">
-        <div class="tabs" id="editor-tabs">
-          <div class="tab active" data-path="/welcome.md">welcome.md</div>
-        </div>
-        <div class="editor-container">
+      <main class="quire quire-main">
+        <div class="tabs" id="editor-tabs"></div>
+        <div class="leaf">
           <textarea id="editor" class="editor" spellcheck="false"></textarea>
           <iframe id="preview" class="preview" sandbox="allow-scripts allow-same-origin" title="Live preview"></iframe>
-          <div id="sandbox-wrapper" style="display:none;">
+          <div id="sandbox-wrapper" hidden>
             <iframe id="sandbox-frame" src="sandbox.html" sandbox="allow-scripts allow-same-origin" title="Code sandbox"></iframe>
           </div>
         </div>
       </main>
 
-      <aside class="panel panel-inspector">
-        <div class="panel-header">
-          <span>🔮 WebMCP Inspector</span>
+      <aside class="quire quire-margin">
+        <div class="quire-head">
+          <span class="folio">Instrument</span>
         </div>
-        <div class="inspector-content">
-          <div class="inspector-section">
-            <h3>Registered Tools <span id="tool-count" class="count">0</span></h3>
+        <div class="margin-body">
+          <section class="gathering">
+            <h2 class="rubric">Registered tools <span id="tool-count" class="tally">0</span></h2>
             <div id="tool-list" class="tool-list"></div>
-          </div>
-          <div class="inspector-section">
-            <h3>Recent Calls</h3>
-            <div id="call-log" class="call-log"></div>
-          </div>
+          </section>
+          <section class="gathering">
+            <h2 class="rubric">Ledger</h2>
+            <div id="call-log" class="ledger"></div>
+          </section>
         </div>
       </aside>
     </div>
 
-    <div class="bottom-panels">
-      <div class="panel panel-terminal">
-        <div class="panel-header">
-          <span>💻 Terminal</span>
-          <button id="btn-clear-term" class="btn-icon">⌫</button>
+    <div class="footer-quires">
+      <div class="quire quire-terminal">
+        <div class="quire-head">
+          <span class="folio">Terminal</span>
+          <button id="btn-clear-term" class="mark" title="Clear">&#8630;</button>
         </div>
         <div id="terminal" class="terminal"></div>
       </div>
-      <div class="panel panel-chat">
-        <div class="panel-header">
-          <span>💬 Agent Chat</span>
-          <button id="btn-stop-agent" class="btn-icon" title="Stop agent" hidden>⏹</button>
+
+      <div class="quire quire-dialogue">
+        <div class="quire-head">
+          <span class="folio">Dictation</span>
+          <button id="btn-stop-agent" class="mark" title="Stop the agent" hidden>&#9633;</button>
         </div>
         <div id="chat-log" class="chat-log"></div>
-        <form id="agent-form" class="agent-form">
-          <select id="agent-model" title="Model"></select>
-          <input id="agent-goal" type="text" placeholder="Give the agent a real task, e.g. 'Build a pricing page'" autocomplete="off" />
-          <button type="submit" id="btn-agent-send" class="btn btn-primary">Run Agent</button>
+        <form id="agent-form" class="dictation">
+          <div class="dictation-row">
+            <input id="agent-goal" type="text" autocomplete="off"
+                   placeholder="Set the agent a task&hellip;" />
+            <button type="submit" id="btn-agent-send" class="btn btn-ink">Commit</button>
+          </div>
+          <div class="dictation-row secondary">
+            <select id="agent-model" title="Model"></select>
+          </div>
         </form>
       </div>
     </div>
   </div>
 
-  <div id="demo-overlay" class="demo-overlay hidden">
-    <div class="demo-modal">
-      <h2>🤖 Demo Agent Running</h2>
-      <p>Watch an AI agent build a complete website using only WebMCP tool calls.</p>
-      <div class="demo-progress">
-        <div class="demo-bar" id="demo-bar"></div>
-      </div>
-      <div id="demo-status" class="demo-status">Initializing...</div>
-      <button id="btn-stop-demo" class="btn btn-danger">Stop Demo</button>
+  <div id="demo-overlay" class="curtain hidden">
+    <div class="plate">
+      <h2>Scripted demonstration</h2>
+      <p>A fixed sequence, not a model &mdash; it proves the tool layer end to end without spending a single token.</p>
+      <div class="gauge"><div class="gauge-fill" id="demo-bar"></div></div>
+      <p class="gauge-note" id="demo-status">Setting type&hellip;</p>
+      <button id="btn-stop-demo" class="btn btn-quiet">Halt</button>
     </div>
   </div>
 

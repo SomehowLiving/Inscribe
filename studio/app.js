@@ -1,4 +1,4 @@
-class AgentForgeApp {
+class InscribeApp {
   constructor() {
     this.vfs = window.vfs;
     this.currentPath = '/welcome.md';
@@ -12,14 +12,15 @@ class AgentForgeApp {
     this.bindEvents();
     this.renderFileTree();
     this.loadFile('/welcome.md');
-    this.webmcp = new window.ForgeWebMCP(this.vfs, this);
+    this.renderTabs();
+    this.webmcp = new window.InscribeWebMCP(this.vfs, this);
     this.renderToolList();
     this.refreshPreview('/project');
     this.loadAgentModels();
 
     this.vfs.onChange(() => this.renderFileTree());
 
-    this.appendTerminal('AgentForge Studio v1.0.0 initialized.');
+    this.appendTerminal('Inscribe — press ready.');
     this.appendTerminal(`WebMCP bridge active. ${this.webmcp.getToolList().length} tools registered.`);
     this.appendTerminal('Waiting for agent connection...');
   }
@@ -141,7 +142,7 @@ class AgentForgeApp {
       div.className = `file-item ${node.type} ${node.path === this.currentPath ? 'active' : ''}`;
       div.style.paddingLeft = (8 + (node.prefix.length / 2) * 16) + 'px';
 
-      const icon = node.type === 'directory' ? '📁' : this.getFileIcon(node.name);
+      const icon = node.type === 'directory' ? '▾' : this.getFileIcon(node.name);
       const iconEl = document.createElement('span');
       iconEl.className = 'file-icon';
       iconEl.textContent = icon;
@@ -163,13 +164,14 @@ class AgentForgeApp {
   }
 
   getFileIcon(name) {
-    const ext = name.split('.').pop();
-    const icons = {
-      js: '⚡', jsx: '⚛️', ts: '🔷', tsx: '🔷',
-      html: '🌐', css: '🎨', scss: '🎨', json: '📋',
-      md: '📝', py: '🐍', svg: '🖼️', png: '🖼️', jpg: '🖼️',
+    const ext = name.split('.').pop().toLowerCase();
+    // Typographic marks, not emoji — a press room has no stickers.
+    const marks = {
+      js: '\u0192', mjs: '\u0192', jsx: '\u0192', ts: '\u0192', tsx: '\u0192',
+      html: '\u2039', css: '\u00b6', json: '{', md: '\u00a7',
+      py: '\u0192', svg: '\u25e7', png: '\u25e7', jpg: '\u25e7',
     };
-    return icons[ext] || '📄';
+    return marks[ext] || '\u00b7';
   }
 
   openFile(path) {
@@ -294,5 +296,5 @@ class AgentForgeApp {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  window.app = new AgentForgeApp();
+  window.app = new InscribeApp();
 });

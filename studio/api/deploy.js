@@ -64,7 +64,7 @@ module.exports = async (req, res) => {
   }
 
   const projectId = process.env.VERCEL_PROJECT_ID;
-  const deployName = (body.name && String(body.name).slice(0, 50)) || 'agentforge-build';
+  const deployName = (body.name && String(body.name).slice(0, 50)) || 'inscribe-build';
 
   try {
     const upstream = await fetch('https://api.vercel.com/v13/deployments', {

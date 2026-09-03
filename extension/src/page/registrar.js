@@ -1,5 +1,5 @@
 /**
- * AgentForge — registrar + executor (MAIN world).
+ * Inscribe — registrar + executor (MAIN world).
  *
  * Registers synthesized candidates as real WebMCP tools on this document, and
  * executes them against the live DOM using the selectors captured at scan
@@ -13,8 +13,8 @@
 (function () {
   'use strict';
 
-  const PAGE = 'agentforge-page';
-  const EXT = 'agentforge-ext';
+  const PAGE = 'inscribe-page';
+  const EXT = 'inscribe-ext';
 
   const state = {
     candidates: [],
@@ -157,20 +157,20 @@
   }
 
   async function register() {
-    const forge = window.__agentforge;
-    if (!forge) return;
+    const inscribe = window.__inscribe;
+    if (!inscribe) return;
 
     // Abort the previous generation; spec unregistration is signal-based.
     if (state.controller) state.controller.abort();
     state.controller = new AbortController();
     const { signal } = state.controller;
 
-    const { candidates, stats, url, title } = window.__agentforgeSynthesize.scan();
+    const { candidates, stats, url, title } = window.__inscribeSynthesize.scan();
     state.candidates = candidates;
 
     for (const c of candidates) {
       try {
-        await forge.host.registerTool(
+        await inscribe.host.registerTool(
           {
             name: c.name,
             description: c.description,
@@ -191,8 +191,8 @@
     // Also surface tools the SITE declared natively — always preferred.
     let siteTools = [];
     try {
-      if (forge.usingNative) {
-        siteTools = (await forge.host.getTools()).map((t) => ({
+      if (inscribe.usingNative) {
+        siteTools = (await inscribe.host.getTools()).map((t) => ({
           name: t.name,
           description: t.description,
           trust: 'declared',
@@ -207,7 +207,7 @@
     post('tools', {
       url,
       title,
-      usingNative: forge.usingNative,
+      usingNative: inscribe.usingNative,
       stats,
       siteTools,
       tools: candidates.map((c) => ({

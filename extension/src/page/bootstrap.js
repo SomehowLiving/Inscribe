@@ -1,5 +1,5 @@
 /**
- * AgentForge — WebMCP bootstrap (MAIN world, document_start).
+ * Inscribe — WebMCP bootstrap (MAIN world, document_start).
  *
  * Native WebMCP is gated behind chrome://flags/#enable-webmcp-testing or a
  * per-origin trial token that the SITE must serve. On a third-party site we
@@ -14,8 +14,8 @@
 (function () {
   'use strict';
 
-  if (window.__agentforgeBootstrapped) return;
-  window.__agentforgeBootstrapped = true;
+  if (window.__inscribeBootstrapped) return;
+  window.__inscribeBootstrapped = true;
 
   function isComplete(value) {
     try {
@@ -104,7 +104,7 @@
   const native = readNative();
   const local = new LocalModelContext();
 
-  window.__agentforge = {
+  window.__inscribe = {
     native: native || null,
     local,
     // Site-declared tools (native) are authoritative; ours are supplemental.
@@ -121,7 +121,7 @@
         },
       });
     } catch {
-      // Some pages freeze document; we still work via __agentforge.local.
+      // Some pages freeze document; we still work via __inscribe.local.
     }
   }
 })();

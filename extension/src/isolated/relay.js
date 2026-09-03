@@ -1,5 +1,5 @@
 /**
- * AgentForge — relay (ISOLATED world).
+ * Inscribe — relay (ISOLATED world).
  *
  * The page world can't touch chrome.* and the extension can't touch page JS
  * objects, so this sits between them: window.postMessage on the page side,
@@ -11,8 +11,8 @@
 (function () {
   'use strict';
 
-  const PAGE = 'agentforge-page';
-  const EXT = 'agentforge-ext';
+  const PAGE = 'inscribe-page';
+  const EXT = 'inscribe-ext';
 
   const listeners = new Set();
   const state = { tools: [], siteTools: [], stats: null, usingNative: false, log: [], port: null };
@@ -33,7 +33,7 @@
 
   function connect() {
     try {
-      state.port = chrome.runtime.connect({ name: 'agentforge-relay' });
+      state.port = chrome.runtime.connect({ name: 'inscribe-relay' });
       state.port.onMessage.addListener((msg) => {
         if (!msg || !msg.type) return;
         if (msg.type === 'execute') toPage('execute', msg.payload);
@@ -85,8 +85,8 @@
 
     if (data.type === 'confirm-request') {
       // Handed to the overlay, which is the only thing allowed to approve.
-      if (window.__agentforgeOverlay && window.__agentforgeOverlay.askConfirm) {
-        window.__agentforgeOverlay.askConfirm(data.payload, (approved) => {
+      if (window.__inscribeOverlay && window.__inscribeOverlay.askConfirm) {
+        window.__inscribeOverlay.askConfirm(data.payload, (approved) => {
           toPage('confirm-response', { id: data.payload.id, approved });
           state.log.unshift({
             name: data.payload.name,
@@ -112,7 +112,7 @@
     }
   });
 
-  window.__agentforgeRelay = {
+  window.__inscribeRelay = {
     state,
     subscribe(fn) {
       listeners.add(fn);

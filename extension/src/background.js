@@ -1,8 +1,8 @@
 /**
- * AgentForge — background service worker.
+ * Inscribe — background service worker.
  *
  * Holds per-tab tool registries and runs the agent loop. The model call is
- * delegated to AgentForge Studio's existing /api/agent endpoint, which already
+ * delegated to Inscribe's existing /api/agent endpoint, which already
  * does provider-agnostic tool calling across Groq / OpenRouter / Google /
  * NVIDIA — so the extension inherits every model without shipping keys.
  *
@@ -19,7 +19,7 @@ const tools = new Map(); // tabId -> { tools, siteTools, url, title }
 const waiters = new Map(); // callId -> resolve
 
 chrome.runtime.onConnect.addListener((port) => {
-  if (port.name !== 'agentforge-relay') return;
+  if (port.name !== 'inscribe-relay') return;
   const tabId = port.sender && port.sender.tab && port.sender.tab.id;
   if (tabId == null) return;
 
@@ -54,7 +54,7 @@ chrome.action.onClicked.addListener(async (tab) => {
   await chrome.scripting.executeScript({
     target: { tabId: tab.id },
     world: 'ISOLATED',
-    func: () => window.__agentforgeOverlay && window.__agentforgeOverlay.toggle(),
+    func: () => window.__inscribeOverlay && window.__inscribeOverlay.toggle(),
   });
 });
 
@@ -65,7 +65,7 @@ chrome.commands.onCommand.addListener(async (command) => {
   await chrome.scripting.executeScript({
     target: { tabId: tab.id },
     world: 'ISOLATED',
-    func: () => window.__agentforgeOverlay && window.__agentforgeOverlay.toggle(),
+    func: () => window.__inscribeOverlay && window.__inscribeOverlay.toggle(),
   });
 });
 
@@ -181,7 +181,7 @@ async function runAgent(tabId, goal, model) {
 // Inspection surface for the worker's own DevTools console (and for automated
 // tests). This lives inside the extension's worker context — page scripts have
 // no path to it.
-self.__agentforge = { runAgent, getModels, callTool, tools, ports };
+self.__inscribe = { runAgent, getModels, callTool, tools, ports };
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || !msg.type) return;
