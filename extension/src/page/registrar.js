@@ -310,6 +310,26 @@
         run: (a) => A().arrow(a.from, a.to, a.color),
       },
       {
+        name: 'inscribe.draw.pick',
+        description: 'Ask the human to click an element on the page, then annotate it. kind is "highlight" or "note". Use when you do not know which element they mean.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            kind: { type: 'string', enum: ['highlight', 'note'] },
+            text: { type: 'string', description: 'Note body, when kind is "note".' },
+          },
+          required: ['kind'],
+        },
+        run: (a) => A().pick(a.kind, { text: a.text }),
+      },
+      {
+        name: 'inscribe.draw.export',
+        description: 'Export this page\u2019s annotations and appearance edits as a portable record that can be shared or re-imported.',
+        inputSchema: { type: 'object', properties: {} },
+        readOnly: true,
+        run: () => A().exportAll(),
+      },
+      {
         name: 'inscribe.draw.list',
         description: 'List the annotations currently on this page.',
         inputSchema: { type: 'object', properties: {} },
@@ -455,6 +475,37 @@
 
     if (data.type === 'scan') {
       scheduleRescan();
+      return;
+    }
+
+    // Toolbar actions go straight to the annotation layer. These are the
+    // human's own clicks, not the agent's, so there's nothing to gate.
+    if (data.type === 'annotate') {
+      const A = window.__inscribeAnnotate;
+      if (!A) return;
+      const p = data.payload || {};
+      if (p.action === 'pen') A.setPen(p.on);
+      else if (p.action === 'pick') {
+        const res = await A.pick(p.kind, { text: p.text });
+        post('log', {
+          name: `draw.${p.kind}`,
+          detail: res && res.ok ? 'placed' : `not placed: ${res && res.error}`,
+        });
+      } else if (p.action === 'clearMarks') {
+        A.clear();
+        post('log', { name: 'draw.clear', detail: 'cleared' });
+      } else if (p.action === 'export') {
+        window.postMessage(
+          { source: PAGE, type: 'annotate-export', payload: A.exportAll() },
+          window.location.origin
+        );
+      } else if (p.action === 'import') {
+        const res = A.importAll(p.data);
+        post('log', {
+          name: 'draw.import',
+          detail: res.ok ? `restored ${res.annotations} mark(s)` : res.error,
+        });
+      }
       return;
     }
     if (data.type === 'confirm-response') {

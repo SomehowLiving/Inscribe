@@ -222,7 +222,134 @@
     }
   }
 
+  // ---- Element picker -------------------------------------------------
+  // The toolbar needs a way to say "this one". Hover outlines a candidate,
+  // click commits it. Clicks are swallowed in the capture phase so picking a
+  // link doesn't navigate away mid-annotation.
+  const picker = { active: false, kind: null, hover: null, outline: null, onDone: null };
+
+  function outlineEl() {
+    if (!picker.outline) {
+      picker.outline = el(
+        'div',
+        'position:absolute;pointer-events:none;z-index:2147483001;' +
+          'border:2px dashed #c8552b;background:rgba(200,85,43,.12);border-radius:2px'
+      );
+      picker.outline.id = '__inscribe_pick_outline';
+    }
+    if (!picker.outline.isConnected) {
+      (document.body || document.documentElement).appendChild(picker.outline);
+    }
+    return picker.outline;
+  }
+
+  function moveOutline(target) {
+    if (!target) return;
+    const r = docRect(target);
+    const o = outlineEl();
+    o.style.top = `${r.top - 2}px`;
+    o.style.left = `${r.left - 2}px`;
+    o.style.width = `${r.width + 4}px`;
+    o.style.height = `${r.height + 4}px`;
+  }
+
+  function endPick() {
+    picker.active = false;
+    picker.kind = null;
+    picker.hover = null;
+    if (picker.outline && picker.outline.isConnected) picker.outline.remove();
+    document.documentElement.style.cursor = '';
+  }
+
+  function isOurs(node) {
+    return Boolean(
+      node && node.closest &&
+      node.closest('#__inscribe_annotation_layer, #__inscribe_root, #__inscribe_pick_outline')
+    );
+  }
+
+  document.addEventListener('pointerover', (e) => {
+    if (!picker.active || isOurs(e.target)) return;
+    picker.hover = e.target;
+    moveOutline(e.target);
+  }, true);
+
+  document.addEventListener('click', (e) => {
+    if (!picker.active) return;
+    if (isOurs(e.target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    const target = picker.hover || e.target;
+    const sel = window.__inscribeSynthesize
+      ? window.__inscribeSynthesize.selectorFor(target)
+      : null;
+    const kind = picker.kind;
+    const done = picker.onDone;
+    endPick();
+    if (!sel) {
+      if (done) done({ ok: false, error: 'Could not derive a unique selector for that element.' });
+      return;
+    }
+    let res;
+    if (kind === 'highlight') res = api.highlight(sel);
+    else if (kind === 'note') res = api.note(sel, picker.pendingText || 'Note');
+    else res = { ok: false, error: `Unknown pick kind: ${kind}` };
+    if (done) done(res);
+  }, true);
+
+  document.addEventListener('keydown', (e) => {
+    if (picker.active && e.key === 'Escape') {
+      endPick();
+      if (picker.onDone) picker.onDone({ ok: false, error: 'Cancelled.' });
+    }
+  }, true);
+
   const api = {
+    /** Enter pick mode; resolves when the human clicks something or hits Escape. */
+    pick(kind, opts = {}) {
+      return new Promise((resolve) => {
+        picker.active = true;
+        picker.kind = kind;
+        picker.pendingText = opts.text;
+        picker.onDone = resolve;
+        document.documentElement.style.cursor = 'crosshair';
+      });
+    },
+
+    cancelPick() {
+      const was = picker.active;
+      endPick();
+      return { ok: true, wasActive: was };
+    },
+
+    /** A portable record of this page's annotations plus any appearance edits. */
+    exportAll() {
+      const edits = window.__inscribeTinker ? window.__inscribeTinker.exportEdits() : null;
+      return {
+        format: 'inscribe/annotated-page@1',
+        url: location.href,
+        title: document.title,
+        savedAt: new Date().toISOString(),
+        annotations: state.marks,
+        edits,
+      };
+    },
+
+    importAll(data) {
+      if (!data || data.format !== 'inscribe/annotated-page@1') {
+        return { ok: false, error: 'Not an Inscribe annotated-page file.' };
+      }
+      state.marks = Array.isArray(data.annotations) ? data.annotations : [];
+      state.seq = state.marks.reduce((m, x) => Math.max(m, Number(x.id) || 0), 0);
+      redraw();
+      let editsRestored = false;
+      if (data.edits && window.__inscribeTinker && window.__inscribeTinker.importEdits) {
+        editsRestored = Boolean(window.__inscribeTinker.importEdits(data.edits).ok);
+      }
+      return { ok: true, annotations: state.marks.length, editsRestored, from: data.url };
+    },
+
     highlight(target, text, color) {
       const sel = resolve(target);
       if (!sel) return { ok: false, error: `No such target: "${target}".` };

@@ -40,7 +40,7 @@
       }
       .launcher:hover { border-color:var(--faint); }
       .panel {
-        position:fixed; top:14px; right:14px; width:352px; max-height:88vh;
+        position:fixed; top:14px; right:14px; width:376px; max-height:88vh;
         display:flex; flex-direction:column; overflow:hidden;
         background:var(--ink); color:var(--paper);
         border:1px solid var(--rule); border-top:2px solid var(--red);
@@ -110,9 +110,14 @@
       footer { padding:9px 12px 11px; border-top:1px solid var(--soft);
         background:var(--sink); display:flex; flex-direction:column; gap:7px; }
       .frow { display:flex; gap:7px; }
-      footer button { padding:6px 11px; font-family:var(--sans); font-size:11.5px;
+      .tools { flex-wrap:wrap; gap:5px; }
+      .tools button { flex:0 0 auto; padding:4px 8px; font-size:10.5px;
+        font-family:var(--mono); letter-spacing:.03em; }
+      .tools button.on { background:var(--red); border-color:var(--red);
+        color:#17140f; font-weight:600; }
+      footer button { padding:6px 10px; font-family:var(--sans); font-size:11.5px;
         border:1px solid var(--rule); background:transparent; color:var(--mute);
-        border-radius:2px; cursor:pointer; }
+        border-radius:2px; cursor:pointer; white-space:nowrap; flex:0 0 auto; }
       footer button:hover { border-color:var(--faint); color:var(--paper); }
       footer button:disabled { opacity:.4; cursor:not-allowed; }
       #run { background:var(--red); border-color:var(--red); color:#17140f; font-weight:600; }
@@ -123,7 +128,7 @@
       #goal:focus { border-color:var(--red); }
       #model { background:var(--ink); border:1px solid var(--rule); border-radius:2px;
         color:var(--mute); font-family:var(--mono); font-size:10px;
-        padding:5px 6px; max-width:158px; outline:none; }
+        padding:5px 6px; flex:1 1 auto; min-width:0; max-width:150px; outline:none; }
       #model:focus { border-color:var(--red); }
       #status { font-family:var(--mono); font-size:10px; color:var(--faint);
         min-height:13px; line-height:1.4; }
@@ -147,6 +152,14 @@
         <div class="log" id="log"></div>
       </div>
       <footer>
+        <div class="frow tools">
+          <button id="t-pen" title="Freehand pen">Pen</button>
+          <button id="t-hi" title="Click an element to highlight it">Highlight</button>
+          <button id="t-note" title="Click an element to attach a note">Note</button>
+          <button id="t-clear" title="Remove all annotations">Clear</button>
+          <button id="t-exp" title="Export annotations + edits">Export</button>
+          <button id="t-imp" title="Import a saved record">Import</button>
+        </div>
         <div class="frow">
           <input id="goal" type="text" autocomplete="off"
                  placeholder="Tell the agent what to do on this page…" />
@@ -156,7 +169,7 @@
           <select id="model" title="Model"></select>
           <button id="undo" title="Undo the last appearance change">Undo</button>
           <button id="reset" title="Restore this site">Reset</button>
-          <button id="rescan">Re-scan</button>
+          <button id="rescan">Scan</button>
           <button id="stop" disabled>Stop</button>
         </div>
         <div id="status"></div>
@@ -183,6 +196,28 @@
   $('.x').onclick = () => { panel.classList.add('hidden'); launcher.classList.remove('hidden'); };
   $('#rescan').onclick = () => window.__inscribeRelay && window.__inscribeRelay.rescan();
 
+  function page(action, payload) {
+    window.postMessage({ source: 'inscribe-ext', type: 'annotate', payload: { action, ...payload } }, location.origin);
+  }
+
+  // The page world hands back an export for us to save as a file.
+  window.addEventListener('message', (e) => {
+    if (e.source !== window) return;
+    const d = e.data;
+    if (!d || d.source !== 'inscribe-page' || d.type !== 'annotate-export') return;
+    try {
+      const blob = new Blob([JSON.stringify(d.payload, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `inscribe-${location.hostname}-${Date.now()}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      setStatus('Exported.', 'ok');
+    } catch (err) {
+      setStatus(`Export failed: ${err.message}`, 'err');
+    }
+  });
+
   function cosmetic(name) {
     // Tier-one tools need no gate, so call them straight down the execute channel.
     if (window.__inscribeRelay) {
@@ -190,6 +225,43 @@
       setTimeout(() => window.__inscribeRelay.rescan(), 250);
     }
   }
+  // Drawing straight from the toolbar — no agent, no tokens.
+  let penOn = false;
+  $('#t-pen').onclick = () => {
+    penOn = !penOn;
+    $('#t-pen').classList.toggle('on', penOn);
+    page('pen', { on: penOn });
+    setStatus(penOn ? 'Pen on \u2014 drag on the page to draw.' : 'Pen off.');
+  };
+  $('#t-hi').onclick = () => {
+    setStatus('Click an element on the page to highlight it (Esc to cancel).');
+    page('pick', { kind: 'highlight' });
+  };
+  $('#t-note').onclick = () => {
+    const text = prompt('Note text:');
+    if (text == null) return;
+    setStatus('Click the element this note belongs to (Esc to cancel).');
+    page('pick', { kind: 'note', text });
+  };
+  $('#t-clear').onclick = () => { page('clearMarks', {}); setStatus('Annotations cleared.', 'ok'); };
+  $('#t-exp').onclick = () => page('export', {});
+  $('#t-imp').onclick = () => {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = 'application/json';
+    inp.onchange = async () => {
+      const f = inp.files && inp.files[0];
+      if (!f) return;
+      try {
+        page('import', { data: JSON.parse(await f.text()) });
+        setStatus(`Imported ${f.name}.`, 'ok');
+      } catch (err) {
+        setStatus(`Could not read that file: ${err.message}`, 'err');
+      }
+    };
+    inp.click();
+  };
+
   $('#undo').onclick = () => cosmetic('inscribe.ui.undo');
   $('#reset').onclick = () => {
     setStatus('Restored this site to normal.', 'ok');

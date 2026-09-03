@@ -573,6 +573,29 @@
       return { ok: true, reset: true };
     },
 
+    exportEdits() {
+      return {
+        origin: location.origin,
+        theme: state.theme,
+        rules: [...state.rules],
+        hidden: [...state.hidden],
+        texts: [...state.texts],
+        images: [...state.images],
+      };
+    },
+
+    importEdits(d) {
+      if (!d || typeof d !== 'object') return { ok: false, error: 'Nothing to import.' };
+      pushHistory();
+      state.theme = d.theme || null;
+      state.rules = new Map(d.rules || []);
+      state.hidden = new Set(d.hidden || []);
+      state.texts = new Map(d.texts || []);
+      state.images = new Map(d.images || []);
+      render();
+      return { ok: true, restored: state.rules.size + state.hidden.size + state.texts.size + state.images.size };
+    },
+
     summary() {
       return {
         theme: state.theme,
