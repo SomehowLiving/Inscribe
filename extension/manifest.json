@@ -38,6 +38,7 @@
         "src/page/bootstrap.js",
         "src/page/synthesize.js",
         "src/page/tinker.js",
+        "src/page/annotate.js",
         "src/page/registrar.js"
       ],
       "run_at": "document_start",

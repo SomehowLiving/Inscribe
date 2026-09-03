@@ -164,6 +164,7 @@
    */
   function tinkerTools() {
     const T = () => window.__inscribeTinker;
+    const A = () => window.__inscribeAnnotate;
     const targetProp = {
       type: 'string',
       description: 'A target name from inscribe.ui.targets, a landmark word like "header"/"sidebar"/"page", or a CSS selector.',
@@ -178,10 +179,10 @@
       },
       {
         name: 'inscribe.ui.theme',
-        description: 'Apply a whole-page theme: "dark", "sepia", or "none" to remove it. Prefer this over restyling backgrounds by hand — it recolours the rendered page, so it works even when the site paints its own backgrounds on inner containers.',
+        description: 'Apply a whole-page theme. "dark" is fast filter inversion; "smartdark" instead recolours the page\u2019s own colours (slower, but leaves photos and brand colours alone \u2014 try it when "dark" looks wrong). Also "dimmed", "grayscale", "sepia", or "none" to remove. Prefer this over restyling backgrounds by hand — it recolours the rendered page, so it works even when the site paints its own backgrounds on inner containers.',
         inputSchema: {
           type: 'object',
-          properties: { mode: { type: 'string', enum: ['dark', 'dimmed', 'grayscale', 'sepia', 'none'] } },
+          properties: { mode: { type: 'string', enum: ['dark', 'smartdark', 'dimmed', 'grayscale', 'sepia', 'none'] } },
           required: ['mode'],
         },
         run: (a) => T().theme(a.mode),
@@ -267,6 +268,59 @@
           required: ['target', 'text'],
         },
         run: (a) => T().setText(a.target, a.text),
+      },
+      {
+        name: 'inscribe.ui.swapImage',
+        description: 'Replace an image on the page with a different one. Works on <img> elements, or sets a background-image on anything else.',
+        inputSchema: {
+          type: 'object',
+          properties: { target: targetProp, url: { type: 'string', description: 'http(s) or data:image URI' } },
+          required: ['target', 'url'],
+        },
+        run: (a) => T().swapImage(a.target, a.url),
+      },
+      {
+        name: 'inscribe.draw.highlight',
+        description: 'Draw a highlight box around part of the page, optionally with a small label. Use to point something out.',
+        inputSchema: {
+          type: 'object',
+          properties: { target: targetProp, label: { type: 'string' }, color: { type: 'string' } },
+          required: ['target'],
+        },
+        run: (a) => A().highlight(a.target, a.label, a.color),
+      },
+      {
+        name: 'inscribe.draw.note',
+        description: 'Stick a note on the page, anchored beside an element. Use for commentary, review remarks, or reminders.',
+        inputSchema: {
+          type: 'object',
+          properties: { target: targetProp, text: { type: 'string' } },
+          required: ['text'],
+        },
+        run: (a) => A().note(a.target, a.text),
+      },
+      {
+        name: 'inscribe.draw.arrow',
+        description: 'Draw an arrow from one part of the page to another, to show a relationship or a flow.',
+        inputSchema: {
+          type: 'object',
+          properties: { from: targetProp, to: targetProp, color: { type: 'string' } },
+          required: ['from', 'to'],
+        },
+        run: (a) => A().arrow(a.from, a.to, a.color),
+      },
+      {
+        name: 'inscribe.draw.list',
+        description: 'List the annotations currently on this page.',
+        inputSchema: { type: 'object', properties: {} },
+        readOnly: true,
+        run: () => A().list(),
+      },
+      {
+        name: 'inscribe.draw.clear',
+        description: 'Remove every annotation from this page.',
+        inputSchema: { type: 'object', properties: {} },
+        run: () => A().clear(),
       },
       {
         name: 'inscribe.ui.undo',

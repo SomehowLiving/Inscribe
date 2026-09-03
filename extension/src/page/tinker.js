@@ -30,6 +30,7 @@
     rules: new Map(),   // selector -> { [prop]: value }
     hidden: new Set(),  // selectors
     texts: new Map(),   // selector -> string
+    images: new Map(),  // selector -> url
     theme: null,        // 'dark' | 'sepia' | null
     history: [],        // for undo
   };
@@ -85,8 +86,88 @@
     );
   }
 
+  /**
+   * Colour-aware dark mode — the idea behind Dark Reader's dynamicTheme engine,
+   * without its machinery.
+   *
+   * Filter inversion recolours the whole rendered page, which is why it needs a
+   * pile of un-invert exceptions and still mangles some sites. This instead
+   * reads the colours the page actually computes, converts them to HSL, and
+   * flips LIGHTNESS while keeping hue and saturation — so brand colours stay
+   * recognisable, photographs are untouched, and nothing is double-inverted.
+   * Costlier, and it can miss colours applied after the scan, so both engines
+   * are offered rather than one replacing the other.
+   */
+  function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    let h = 0, s = 0;
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+      else if (max === g) h = ((b - r) / d + 2) / 6;
+      else h = ((r - g) / d + 4) / 6;
+    }
+    return [h * 360, s, l];
+  }
+
+  function parseRGB(v) {
+    const m = String(v).match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?/i);
+    if (!m) return null;
+    return { r: +m[1], g: +m[2], b: +m[3], a: m[4] === undefined ? 1 : +m[4] };
+  }
+
+  function flip(hsl, isText) {
+    const [h, s, l] = hsl;
+    // Neutral greys snap to the theme poles; saturated colours keep their
+    // identity and only have their lightness pulled into range.
+    const neutral = s < 0.15;
+    if (isText) {
+      const nl = neutral ? 0.88 : Math.min(0.86, Math.max(0.62, 1 - l * 0.85));
+      return `hsl(${Math.round(h)} ${Math.round((neutral ? 0 : s) * 100)}% ${Math.round(nl * 100)}%)`;
+    }
+    const nl = neutral ? Math.max(0.08, Math.min(0.17, 1 - l)) : Math.max(0.14, Math.min(0.3, 1 - l * 0.8));
+    return `hsl(${Math.round(h)} ${Math.round((neutral ? 0 : s * 0.7) * 100)}% ${Math.round(nl * 100)}%)`;
+  }
+
+  function smartDarkCSS() {
+    const parts = [
+      'html,body{background:#181a1b!important;color:#e8e6e3!important}',
+      // Keep media and form controls exactly as the site drew them.
+      'img,video,canvas,svg,picture{opacity:1!important}',
+    ];
+    const seen = new Set();
+    let budget = 1200;
+    const nodes = document.querySelectorAll('body *');
+    for (const node of nodes) {
+      if (budget-- <= 0) break;
+      if (node.closest(`#${STYLE_ID}, #__inscribe_root, #__inscribe_annotation_layer`)) continue;
+      const cs = getComputedStyle(node);
+      const bg = parseRGB(cs.backgroundColor);
+      const fg = parseRGB(cs.color);
+      const decls = [];
+      if (bg && bg.a > 0.05) {
+        const hsl = rgbToHsl(bg.r, bg.g, bg.b);
+        if (hsl[2] > 0.35) decls.push(`background-color:${flip(hsl, false)}!important`);
+      }
+      if (fg && fg.a > 0.05) {
+        const hsl = rgbToHsl(fg.r, fg.g, fg.b);
+        if (hsl[2] < 0.62) decls.push(`color:${flip(hsl, true)}!important`);
+      }
+      if (!decls.length) continue;
+      const sel = window.__inscribeSynthesize && window.__inscribeSynthesize.selectorFor(node);
+      if (!sel || seen.has(sel)) continue;
+      seen.add(sel);
+      parts.push(`${sel}{${decls.join(';')}}`);
+    }
+    return parts.join('\n');
+  }
+
   const THEMES = {
     dark: () => darkCSS(),
+    smartdark: () => smartDarkCSS(),
     // Softer variants people actually ask for by name.
     dimmed: () => darkCSS({ brightness: 92, contrast: 90 }),
     grayscale: () => 'html{filter:grayscale(100%)!important}',
@@ -125,6 +206,7 @@
     }
     sheet().textContent = parts.join('\n');
     applyTexts();
+    applyImages();
     persist();
   }
 
@@ -138,6 +220,19 @@
     }
   }
 
+  function applyImages() {
+    for (const [sel, url] of state.images) {
+      let nodes = [];
+      try { nodes = document.querySelectorAll(sel); } catch { continue; }
+      for (const n of nodes) {
+        if (n.localName === 'img' && n.getAttribute('src') !== url) {
+          n.setAttribute('src', url);
+          n.removeAttribute('srcset');
+        }
+      }
+    }
+  }
+
   function persist() {
     try {
       localStorage.setItem(
@@ -146,7 +241,12 @@
           rules: [...state.rules],
           hidden: [...state.hidden],
           texts: [...state.texts],
+          images: [...state.images],
           theme: state.theme,
+          history: state.history.slice(-12).map((h) => ({
+            rules: [...h.rules], hidden: [...h.hidden],
+            texts: [...h.texts], images: [...(h.images || new Map())], theme: h.theme,
+          })),
         })
       );
     } catch { /* quota or private mode — edits still live for this session */ }
@@ -160,7 +260,13 @@
       state.rules = new Map(d.rules || []);
       state.hidden = new Set(d.hidden || []);
       state.texts = new Map(d.texts || []);
+      state.images = new Map(d.images || []);
       state.theme = d.theme || null;
+      // Undo used to die at the page boundary, which made edits feel permanent.
+      state.history = (d.history || []).map((h) => ({
+        rules: new Map(h.rules || []), hidden: new Set(h.hidden || []),
+        texts: new Map(h.texts || []), images: new Map(h.images || []), theme: h.theme || null,
+      }));
       render();
       return state.rules.size + state.hidden.size + state.texts.size + (state.theme ? 1 : 0);
     } catch {
@@ -248,6 +354,7 @@
       rules: new Map([...state.rules].map(([k, v]) => [k, { ...v }])),
       hidden: new Set(state.hidden),
       texts: new Map(state.texts),
+      images: new Map(state.images),
       theme: state.theme,
     });
     if (state.history.length > 40) state.history.shift();
@@ -255,6 +362,7 @@
 
   const api = {
     catalog,
+    resolveTarget: resolve,
 
     theme(mode) {
       const m = String(mode || '').toLowerCase();
@@ -411,12 +519,43 @@
       return { ok: true, target, selector: deepSel, applied: Object.keys(props) };
     },
 
+    /** Swap an image's source. VisBug calls this imageswap; it's the most fun
+     *  verb in a tinkering toolkit and CSS can't do it for <img>. */
+    swapImage(target, url) {
+      const sel = resolve(target);
+      if (!sel) return { ok: false, error: `No such target: "${target}".` };
+      const u = String(url || '');
+      if (!/^(https?:|data:image\/)/i.test(u)) {
+        return { ok: false, error: 'url must be http(s) or a data:image URI.' };
+      }
+      let node = null;
+      try { node = document.querySelector(sel); } catch { /* invalid */ }
+      if (!node) return { ok: false, error: `Target vanished: "${target}".` };
+      pushHistory();
+      if (node.localName === 'img') {
+        state.texts.delete(sel);
+        state.images.set(sel, u);
+        applyImages();
+        persist();
+        return { ok: true, target, selector: sel, swapped: 'img src' };
+      }
+      // Anything else: treat it as a background.
+      state.rules.set(sel, Object.assign(state.rules.get(sel) || {}, {
+        'background-image': `url("${u}")`,
+        'background-size': 'cover',
+        'background-position': 'center',
+      }));
+      render();
+      return { ok: true, target, selector: sel, swapped: 'background-image' };
+    },
+
     undo() {
       const prev = state.history.pop();
       if (!prev) return { ok: false, error: 'Nothing to undo.' };
       state.rules = prev.rules;
       state.hidden = prev.hidden;
       state.texts = prev.texts;
+      state.images = prev.images || new Map();
       state.theme = prev.theme;
       render();
       return { ok: true, remaining: state.history.length };
@@ -427,6 +566,7 @@
       state.rules.clear();
       state.hidden.clear();
       state.texts.clear();
+      state.images.clear();
       state.theme = null;
       render();
       try { localStorage.removeItem(KEY); } catch { /* ignore */ }
@@ -439,6 +579,7 @@
         restyled: state.rules.size,
         hidden: state.hidden.size,
         retexted: state.texts.size,
+        swappedImages: state.images.size,
         canUndo: state.history.length > 0,
       };
     },
