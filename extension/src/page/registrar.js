@@ -181,7 +181,7 @@
         description: 'Apply a whole-page theme: "dark", "sepia", or "none" to remove it. Prefer this over restyling backgrounds by hand — it recolours the rendered page, so it works even when the site paints its own backgrounds on inner containers.',
         inputSchema: {
           type: 'object',
-          properties: { mode: { type: 'string', enum: ['dark', 'sepia', 'none'] } },
+          properties: { mode: { type: 'string', enum: ['dark', 'dimmed', 'grayscale', 'sepia', 'none'] } },
           required: ['mode'],
         },
         run: (a) => T().theme(a.mode),
@@ -202,6 +202,49 @@
           required: ['target', 'css'],
         },
         run: (a) => T().restyle(a.target, a.css, a.deep),
+      },
+      {
+        name: 'inscribe.ui.font',
+        description: 'Change typography for part of the page: size, family, weight, lineHeight, color. Reaches descendants, so it beats the site\u2019s own rules. Use for "bigger text", "more readable", "serif".',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            target: targetProp,
+            size: { type: 'string', description: 'e.g. "18px" or "1.2rem"' },
+            family: { type: 'string' },
+            weight: { type: 'string' },
+            lineHeight: { type: 'string', description: 'e.g. "1.7"' },
+            color: { type: 'string' },
+          },
+          required: ['target'],
+        },
+        run: (a) => T().font(a.target, a),
+      },
+      {
+        name: 'inscribe.ui.space',
+        description: 'Adjust padding, margin, or flex/grid gap of part of the page. Use for "more breathing room", "tighter", "wider margins".',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            target: targetProp,
+            padding: { type: 'string' }, margin: { type: 'string' }, gap: { type: 'string' },
+          },
+          required: ['target'],
+        },
+        run: (a) => T().space(a.target, a),
+      },
+      {
+        name: 'inscribe.ui.move',
+        description: 'Move part of the page to the top, bottom, left, or right of its container. Only reflows where the parent layout allows it.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            target: targetProp,
+            where: { type: 'string', enum: ['top', 'bottom', 'left', 'right'] },
+          },
+          required: ['target', 'where'],
+        },
+        run: (a) => T().move(a.target, a.where),
       },
       {
         name: 'inscribe.ui.hide',

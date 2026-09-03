@@ -159,27 +159,67 @@
     return { value: '', source: 'none' };
   }
 
-  /** Stable-ish selector, preferring id > name > nth-of-type path. */
+  /**
+   * A selector that resolves to exactly ONE element.
+   *
+   * Uniqueness is the whole point, and the first version of this got it wrong:
+   * it walked up a fixed six levels and, finding no id, returned an unanchored
+   * path like `div > div > nav`. That matches many subtrees, so hiding one
+   * "navigation" region also hid unrelated content. Anything that feeds a
+   * `display:none` rule has to be exact.
+   *
+   * Strategy: try cheap unique candidates (id, name), then build a full
+   * nth-of-type path anchored at documentElement, which is unique by
+   * construction and survives a reload as long as the structure is stable.
+   * Verify before returning; if nothing is unique, say so rather than guess.
+   */
   function selectorFor(el) {
+    if (!el || el.nodeType !== 1) return null;
     const esc = (v) => (window.CSS && CSS.escape ? CSS.escape(v) : String(v).replace(/["\\]/g, '\\$&'));
-    if (el.id && !isOpaque(el.id)) return `#${esc(el.id)}`;
+    const unique = (sel) => {
+      try {
+        const hits = document.querySelectorAll(sel);
+        return hits.length === 1 && hits[0] === el;
+      } catch {
+        return false;
+      }
+    };
+
+    if (el.id && !isOpaque(el.id)) {
+      const s = `#${esc(el.id)}`;
+      if (unique(s)) return s;
+    }
+
     const name = el.getAttribute && el.getAttribute('name');
-    if (name) return `${el.localName}[name="${esc(name)}"]`;
-    const path = [];
+    if (name) {
+      const s = `${el.localName}[name="${esc(name)}"]`;
+      if (unique(s)) return s;
+    }
+
+    // Full path from the root, anchored — unique by construction.
+    const parts = [];
     let node = el;
-    while (node && node.nodeType === 1 && path.length < 6) {
+    while (node && node.nodeType === 1 && node !== document.documentElement) {
       const parent = node.parentElement;
       if (!parent) break;
-      const same = [...parent.children].filter((c) => c.localName === node.localName);
-      const idx = same.indexOf(node) + 1;
-      path.unshift(same.length > 1 ? `${node.localName}:nth-of-type(${idx})` : node.localName);
-      if (parent.id && !isOpaque(parent.id)) {
-        path.unshift(`#${esc(parent.id)}`);
+      if (node.id && !isOpaque(node.id)) {
+        parts.unshift(`#${esc(node.id)}`);
+        node = null;
         break;
       }
+      const sameTag = [...parent.children].filter((c) => c.localName === node.localName);
+      const idx = sameTag.indexOf(node) + 1;
+      parts.unshift(sameTag.length > 1 ? `${node.localName}:nth-of-type(${idx})` : node.localName);
       node = parent;
     }
-    return path.join(' > ');
+    const anchored = (node === document.documentElement ? 'html > ' : '') + parts.join(' > ');
+    if (unique(anchored)) return anchored;
+
+    const bare = parts.join(' > ');
+    if (unique(bare)) return bare;
+
+    // Better to refuse than to hand back a selector that matches half the page.
+    return null;
   }
 
   /** Spec-style reduction of one form control to a JSON Schema property. */
