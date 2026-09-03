@@ -11,6 +11,8 @@ class RealAgent {
     this.app = app;
     this.running = false;
     this.messages = [];
+    this.handles = new Map();
+    this.schemas = {};
   }
 
   // POST /api/agent with retry on transient failures (network errors, 5xx,
@@ -26,7 +28,7 @@ class RealAgent {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: this.messages,
-          tools: this.app.webmcp.getToolSchemas(),
+          tools: this.schemas,
           model: this.model,
         }),
       });
@@ -59,6 +61,44 @@ class RealAgent {
     return new Promise((r) => setTimeout(r, ms));
   }
 
+  /**
+   * WebMCP discovery. The agent's only source of tools: whatever
+   * document.modelContext reports. If this yields nothing, there is no
+   * fallback path — the run cannot proceed.
+   */
+  async discover() {
+    const ctx = this.app.webmcp.host;
+    if (!ctx || typeof ctx.getTools !== 'function') {
+      throw new Error('WebMCP unavailable: document.modelContext has no getTools().');
+    }
+    const found = await ctx.getTools();
+    this.handles = new Map(found.map((t) => [t.name, t]));
+    this.schemas = {};
+    for (const t of found) {
+      this.schemas[t.name] = {
+        description: t.description,
+        inputSchema: t.inputSchema || { type: 'object', properties: {} },
+      };
+    }
+    this.app.appendTerminal(
+      `[webmcp] getTools() -> ${found.length} tool(s): ${found.slice(0, 4).map((t) => t.name).join(', ')}${found.length > 4 ? ', …' : ''}`
+    );
+    return found;
+  }
+
+  /** Invocation goes through executeTool(), never a private handler map. */
+  async invoke(name, args) {
+    const ctx = this.app.webmcp.host;
+    const handle = this.handles.get(name);
+    if (!handle) throw new Error(`No WebMCP tool named "${name}" is registered.`);
+    const raw = await ctx.executeTool(handle, args || {});
+    try {
+      return typeof raw === 'string' ? JSON.parse(raw) : raw;
+    } catch {
+      return { content: [{ type: 'text', text: String(raw) }] };
+    }
+  }
+
   async start(goal, model) {
     if (this.running) return;
     this.running = true;
@@ -66,6 +106,15 @@ class RealAgent {
     this.messages = [{ role: 'user', content: goal }];
     this.app.showChatMessage(goal, 'info');
     this.app.setAgentBusy(true);
+
+    try {
+      await this.discover();
+    } catch (err) {
+      this.app.showChatMessage(`Cannot start: ${err.message}`, 'error');
+      this.running = false;
+      this.app.setAgentBusy(false);
+      return;
+    }
 
     const MAX_STEPS = 15;
     let step = 0;
@@ -97,7 +146,7 @@ class RealAgent {
         for (const call of data.toolCalls) {
           this.app.appendTerminal(`[agent] ${call.toolName}(${JSON.stringify(call.input)})`);
           try {
-            const toolResult = await this.app.webmcp.callTool(call.toolName, call.input);
+            const toolResult = await this.invoke(call.toolName, call.input);
             resultParts.push({
               type: 'tool-result',
               toolCallId: call.toolCallId,

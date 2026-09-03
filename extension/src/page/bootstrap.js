@@ -1,15 +1,25 @@
 /**
  * Inscribe — WebMCP bootstrap (MAIN world, document_start).
  *
- * Native WebMCP is gated behind chrome://flags/#enable-webmcp-testing or a
- * per-origin trial token that the SITE must serve. On a third-party site we
- * therefore usually find nothing, so we install a local implementation and
- * become our own agent host. If the browser does expose a complete native
- * document.modelContext, we leave it alone and use it — the site's own tools
- * are strictly better than anything we could infer.
+ * Sets up TWO spec-shaped ModelContexts, because they mean different things
+ * and conflating them was a real bug:
  *
- * The surface mirrors the spec exactly: registerTool(), getTools(),
- * executeTool(), and a toolchange event. Nothing else exists in the real API.
+ *   1. document.modelContext — THE SITE'S VOICE. Whatever the page author
+ *      declared. Native when the browser supports it; otherwise we install a
+ *      polyfill so a WebMCP-enabled site's own registerTool() calls still
+ *      succeed on a browser without the flag. Inscribe only ever READS this.
+ *      We never register our own tools here: `registerTool` is the author's
+ *      channel, and writing into it makes a third party's guesses look like
+ *      the site's declarations to any other agent on the page.
+ *
+ *   2. window.__inscribe.own — INSCRIBE'S VOICE. Tools we inferred from the
+ *      DOM, plus extension-level powers (restyle, annotate) that are
+ *      capabilities *over* a page rather than *of* it. Same three-method
+ *      surface, so the agent discovers and invokes them identically.
+ *
+ * Both are real ModelContexts: registerTool(), getTools(), executeTool(),
+ * toolchange. The agent path goes through getTools()/executeTool() on both —
+ * it has no other way in.
  */
 (function () {
   'use strict';
@@ -82,11 +92,16 @@
 
     getTools() {
       return Promise.resolve(
+        // Shape follows the spec's RegisteredTool dictionary, including
+        // `title` — which an agent surface may show to a human, so dropping it
+        // silently degrades the UI it was added for.
         [...this._tools.values()].map((t) => ({
           name: t.name,
+          title: t.title,
           description: t.description,
           inputSchema: t.inputSchema,
           annotations: t.annotations,
+          origin: location.origin,
         }))
       );
     }
@@ -102,13 +117,16 @@
   }
 
   const native = readNative();
-  const local = new LocalModelContext();
+  // The site's context: native if the browser provides it, else a polyfill so
+  // the PAGE can still declare tools. Either way, read-only from our side.
+  const pageContext = native || new LocalModelContext();
+  // Inscribe's own context, always ours.
+  const ownContext = new LocalModelContext();
 
   window.__inscribe = {
     native: native || null,
-    local,
-    // Site-declared tools (native) are authoritative; ours are supplemental.
-    host: native || local,
+    page: pageContext,
+    own: ownContext,
     usingNative: Boolean(native),
   };
 
@@ -117,11 +135,11 @@
       Object.defineProperty(document, 'modelContext', {
         configurable: true,
         get() {
-          return local;
+          return pageContext;
         },
       });
     } catch {
-      // Some pages freeze document; we still work via __inscribe.local.
+      // Some pages freeze document; the site simply can't declare tools there.
     }
   }
 })();

@@ -34,12 +34,31 @@
       return Promise.resolve();
     }
     getTools() {
-      return Promise.resolve([...this.tools.values()]);
+      // Spec RegisteredTool projection, so consumers see the same shape a
+      // native implementation would hand back.
+      return Promise.resolve(
+        [...this.tools.values()].map((t) => ({
+          name: t.name,
+          title: t.title,
+          description: t.description,
+          inputSchema: t.inputSchema,
+          annotations: t.annotations,
+          origin: location.origin,
+        }))
+      );
     }
     executeTool(tool, inputObject = {}) {
+      // Handles from getTools() are projections, so resolve by name.
       const def = this.tools.get(tool && tool.name ? tool.name : tool);
-      if (!def) return Promise.reject(new Error(`Unknown tool: ${tool}`));
-      return Promise.resolve(def.execute(inputObject));
+      if (!def) {
+        return Promise.reject(new DOMException(`Unknown tool: ${tool && tool.name ? tool.name : tool}`, 'NotFoundError'));
+      }
+      // Spec: executeTool resolves to a DOMString. Returning the raw object
+      // made every result stringify to "[object Object]" for any consumer that
+      // took the contract at its word.
+      return Promise.resolve(def.execute(inputObject)).then((r) =>
+        typeof r === 'string' ? r : JSON.stringify(r)
+      );
     }
   }
 
@@ -52,8 +71,26 @@
       this.handlers = new Map();
 
       const host = getModelContext();
-      this.host = host || new LocalRegistry();
-      this.usingPolyfillFallback = !host;
+      if (host) {
+        this.host = host;
+        this.usingPolyfillFallback = false;
+      } else {
+        // No native WebMCP here. Install our registry ON document.modelContext
+        // rather than keeping it private: Inscribe IS this site, so these are
+        // genuinely its declared capabilities, and any agent that visits — the
+        // built-in one, ChatGPT Desktop, our own — should find them at the
+        // standard location instead of a place only we know about.
+        this.host = new LocalRegistry();
+        this.usingPolyfillFallback = true;
+        try {
+          Object.defineProperty(document, 'modelContext', {
+            configurable: true,
+            get: () => this.host,
+          });
+        } catch {
+          // Frozen document: tools still work for our own agent.
+        }
+      }
 
       this.registerAll();
     }
@@ -71,10 +108,26 @@
       if (this.app) this.app.updateLog(this.logs);
     }
 
-    define(name, description, inputSchema, handler) {
+    /**
+     * @param opts {{ title?, readOnly?, consequential?, untrustedOutput? }}
+     *   consequential — irreversible or externally visible (deploy, delete,
+     *   shell). Chrome's guidance is explicit: don't let an agent auto-submit
+     *   these. They now require a human click that the agent cannot make.
+     */
+    define(name, description, inputSchema, handler, opts = {}) {
       const wrapped = async (args) => {
         this.log(`→ ${name}(${JSON.stringify(args || {})})`, 'call');
         try {
+          if (opts.consequential) {
+            const ok = await this.app.confirmConsequential(name, args || {});
+            if (!ok) {
+              this.log(`✗ ${name}: declined by human`, 'warning');
+              return {
+                content: [{ type: 'text', text: `Refused: "${name}" is irreversible and the human declined it.` }],
+                isError: true,
+              };
+            }
+          }
           const result = await handler(args || {});
           this.log(`✓ ${name}`, 'success');
           return result;
@@ -90,8 +143,13 @@
       try {
         reg = this.host.registerTool({
           name,
+          title: opts.title || name.split('.').slice(1).join(' '),
           description,
           inputSchema,
+          annotations: {
+            readOnlyHint: Boolean(opts.readOnly),
+            untrustedContentHint: Boolean(opts.untrustedOutput),
+          },
           async execute(args) {
             return wrapped(args);
           },
@@ -115,7 +173,7 @@
         });
       }
 
-      this.registrations.push({ name, description, inputSchema, reg });
+      this.registrations.push({ name, title: opts.title, description, inputSchema, opts, reg });
     }
 
     getToolList() {
@@ -148,14 +206,16 @@
         'inscribe.file.list',
         'List files and directories under a given path.',
         { type: 'object', properties: { path: { type: 'string' } } },
-        ({ path }) => vfs.list(path || '/')
+        ({ path }) => vfs.list(path || '/'),
+        { title: 'List files', readOnly: true }
       );
 
       this.define(
         'inscribe.file.read',
         'Read the contents of a single file.',
         { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
-        ({ path }) => vfs.read(path)
+        ({ path }) => vfs.read(path),
+        { title: 'Read a file', readOnly: true }
       );
 
       this.define(
@@ -173,7 +233,8 @@
         'inscribe.file.delete',
         'Delete a file or directory (recursively).',
         { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
-        ({ path }) => vfs.delete(path)
+        ({ path }) => vfs.delete(path),
+        { title: 'Delete a file', consequential: true }
       );
 
       this.define(
@@ -204,7 +265,8 @@
         'inscribe.terminal.exec',
         'Actually run a shell command, isolated in an ephemeral Vercel Sandbox VM (not this server), and print its real output to the Terminal panel.',
         { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] },
-        ({ command }) => this.execCommand(command)
+        ({ command }) => this.execCommand(command),
+        { title: 'Run a shell command', consequential: true, untrustedOutput: true }
       );
 
       this.define(
@@ -233,7 +295,8 @@
           version: '1.0.0',
           webmcpHost: this.usingPolyfillFallback ? 'local-fallback' : 'native-or-polyfill',
           toolCount: this.registrations.length,
-        })
+        }),
+        { title: 'Environment info', readOnly: true }
       );
 
       this.define(
@@ -258,7 +321,8 @@
           type: 'object',
           properties: { path: { type: 'string' }, name: { type: 'string' } },
         },
-        ({ path, name }) => this.deployProject(path || '/project', name)
+        ({ path, name }) => this.deployProject(path || '/project', name),
+        { title: 'Publish to a live URL', consequential: true }
       );
     }
 

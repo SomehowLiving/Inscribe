@@ -15,7 +15,7 @@
   const EXT = 'inscribe-ext';
 
   const listeners = new Set();
-  const state = { tools: [], siteTools: [], cosmeticTools: [], edits: null, stats: null, usingNative: false, log: [], port: null };
+  const state = { tools: [], siteTools: [], cosmeticTools: [], discovery: null, edits: null, stats: null, usingNative: false, log: [], port: null };
 
   function toPage(type, payload) {
     window.postMessage({ source: EXT, type, payload }, window.location.origin);
@@ -38,6 +38,7 @@
         if (!msg || !msg.type) return;
         if (msg.type === 'execute') toPage('execute', msg.payload);
         if (msg.type === 'scan') toPage('scan', {});
+        if (msg.type === 'discover') toPage('discover', {});
         if (msg.type === 'agent-progress') {
           state.log.unshift({ ...msg.payload, time: new Date().toLocaleTimeString() });
           state.log = state.log.slice(0, 100);
@@ -74,6 +75,22 @@
       state.stats = data.payload.stats || null;
       state.usingNative = Boolean(data.payload.usingNative);
       send('tools', data.payload);
+      emit();
+      return;
+    }
+
+    // WebMCP discovery result — forwarded to the worker (which needs the
+    // schemas to call the model) and surfaced in the panel so the trace is
+    // visible rather than implied.
+    if (data.type === 'discovery') {
+      state.discovery = data.payload;
+      send('discovery', data.payload);
+      const c = data.payload.counts || {};
+      state.log.unshift({
+        name: 'webmcp.getTools',
+        detail: `discovered ${c.site || 0} site-declared + ${c.inscribe || 0} Inscribe tool(s)`,
+        time: new Date().toLocaleTimeString(),
+      });
       emit();
       return;
     }
@@ -122,6 +139,7 @@
       return () => listeners.delete(fn);
     },
     rescan: () => toPage('scan', {}),
+    discover: () => toPage('discover', {}),
     execute: (name, args, callId) => toPage('execute', { name, args, callId }),
   };
 

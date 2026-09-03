@@ -124,6 +124,33 @@ class InscribeApp {
     });
   }
 
+  /**
+   * Human gate for irreversible tools (delete, shell, deploy). Resolves only
+   * on a real click; there is no programmatic path an agent could take, and it
+   * fails closed after 90s so an unattended run cannot deploy by timeout.
+   */
+  confirmConsequential(name, args) {
+    return new Promise((resolve) => {
+      const overlay = document.getElementById('consent-overlay');
+      document.getElementById('consent-msg').textContent =
+        `The agent wants to run "${name}". This is irreversible or externally ` +
+        `visible, so it needs your approval.`;
+      document.getElementById('consent-args').textContent = JSON.stringify(args, null, 2);
+      overlay.classList.remove('hidden');
+
+      let settled = false;
+      const finish = (ok) => {
+        if (settled) return;
+        settled = true;
+        overlay.classList.add('hidden');
+        resolve(ok);
+      };
+      document.getElementById('consent-yes').onclick = () => finish(true);
+      document.getElementById('consent-no').onclick = () => finish(false);
+      setTimeout(() => finish(false), 90000);
+    });
+  }
+
   setAgentBusy(busy) {
     this.realAgentBusy = busy;
     this.els.agentSend.disabled = busy;

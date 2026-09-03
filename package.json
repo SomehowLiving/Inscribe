@@ -1,0 +1,11 @@
+{
+  "name": "inscribe",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "eval": "node tests/webmcp.eval.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}

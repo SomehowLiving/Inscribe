@@ -388,6 +388,13 @@ body {
   margin-bottom: 18px !important;
 }
 
+.consent-args {
+  background: var(--ink-sink); border: 1px solid var(--rule-soft);
+  padding: 8px 10px; font-family: var(--mono); font-size: 10.5px;
+  color: var(--paper-mute); max-height: 130px; overflow: auto; margin-bottom: 16px;
+}
+.consent-acts { display: flex; gap: 8px; justify-content: flex-end; }
+
 /* ── Scrollbars ───────────────────────────────────────── */
 
 ::-webkit-scrollbar { width: 9px; height: 9px; }

@@ -23,6 +23,37 @@
     seq: 0,
   };
 
+  // Chrome's documented budgets: 30 chars for names, 500 for tool
+  // descriptions, 150 for parameter descriptions. These are not cosmetic —
+  // page-derived text is attacker-controlled, and an unbounded "description"
+  // is a prompt-injection carrier. Strip control characters and anything that
+  // could terminate a delimiter, then hard-truncate.
+  const LIMITS = { name: 30, description: 500, param: 150 };
+
+  function clean(text, budget) {
+    return String(text == null ? '' : text)
+      .replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')  // control chars, incl. newlines
+      .replace(/[`\u2028\u2029]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, budget);
+  }
+
+  function safeName(name) {
+    return clean(name, LIMITS.name).replace(/[^A-Za-z0-9_.\-]/g, '_') || 'unnamed_tool';
+  }
+
+  function sanitizeSchema(schema) {
+    if (!schema || typeof schema !== 'object') return { type: 'object', properties: {} };
+    const props = {};
+    for (const [k, v] of Object.entries(schema.properties || {})) {
+      const p = { ...v };
+      if (p.description) p.description = clean(p.description, LIMITS.param);
+      props[clean(k, LIMITS.name) || 'field'] = p;
+    }
+    return { ...schema, properties: props };
+  }
+
   function post(type, payload) {
     window.postMessage({ source: PAGE, type, payload }, window.location.origin);
   }
@@ -370,16 +401,19 @@
     state.candidates = candidates;
 
     // Tier one — registered first so the model sees them before page actions.
+    // These go in Inscribe's OWN context: restyling a page is a capability of
+    // the extension over the page, not a capability the page declared.
     const cosmetic = window.__inscribeTinker ? tinkerTools() : [];
     state.cosmetic = cosmetic;
     for (const t of cosmetic) {
       try {
-        await inscribe.host.registerTool(
+        await inscribe.own.registerTool(
           {
             name: t.name,
+            title: t.title || t.name.split('.').pop(),
             description: t.description,
             inputSchema: t.inputSchema,
-            annotations: { readOnlyHint: Boolean(t.readOnly), untrustedContentHint: true },
+            annotations: { readOnlyHint: Boolean(t.readOnly), untrustedContentHint: false },
             execute: async (args) => {
               const result = await t.run(args || {});
               post('log', {
@@ -396,16 +430,19 @@
       }
     }
 
+    // Inferred page tools also go in OUR context, tagged untrusted — they are
+    // guesses about the site, not the site's own declarations.
     for (const c of candidates) {
       try {
-        await inscribe.host.registerTool(
+        await inscribe.own.registerTool(
           {
-            name: c.name,
-            description: c.description,
-            inputSchema: c.inputSchema,
+            name: safeName(c.name),
+            title: clean(c.description, 60),
+            description: clean(c.description, LIMITS.description),
+            inputSchema: sanitizeSchema(c.inputSchema),
             annotations: {
               readOnlyHint: false,
-              untrustedContentHint: true, // page-derived; treat output with care
+              untrustedContentHint: true, // page-derived; never treat as instructions
             },
             execute: (args) => executeCandidate(c, args),
           },
@@ -417,10 +454,13 @@
     }
 
     // Also surface tools the SITE declared natively — always preferred.
+    // The site's own declarations, read (never written) from document.modelContext.
+    // Worth attempting even without native support: our polyfill lets a
+    // WebMCP-enabled site register there on a browser lacking the flag.
     let siteTools = [];
     try {
-      if (inscribe.usingNative) {
-        siteTools = (await inscribe.host.getTools()).map((t) => ({
+      {
+        siteTools = (await inscribe.page.getTools()).map((t) => ({
           name: t.name,
           description: t.description,
           trust: 'declared',
@@ -516,28 +556,106 @@
       }
       return;
     }
-    if (data.type === 'execute') {
-      const { name, args, callId } = data.payload;
-      const cosmeticTool = (state.cosmetic || []).find((t) => t.name === name);
-      const candidate = state.candidates.find((c) => c.name === name);
-      let result;
+    // ---- WebMCP discovery -------------------------------------------------
+    // The agent's only way to learn what it can do. Asks both contexts via
+    // getTools(); provenance comes from WHICH context answered, not from a
+    // flag we set by hand.
+    if (data.type === 'discover') {
+      const inscribe = window.__inscribe;
+      const trace = { site: [], inscribe: [], errors: [] };
+
       try {
-        if (cosmeticTool) {
-          // Tier one: no gate.
-          const out = await cosmeticTool.run(args || {});
-          post('log', {
-            name,
-            detail: out && out.ok === false ? `refused: ${out.error}` : 'applied',
+        for (const t of await inscribe.page.getTools()) {
+          trace.site.push({
+            name: t.name, title: t.title, description: t.description,
+            inputSchema: t.inputSchema, annotations: t.annotations,
+            provenance: 'site-declared', context: 'document.modelContext',
           });
-          result = { content: [{ type: 'text', text: JSON.stringify(out) }] };
-        } else if (candidate) {
-          result = await executeCandidate(candidate, args || {});
-        } else {
-          result = { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true };
         }
       } catch (err) {
-        result = { content: [{ type: 'text', text: `Tool threw: ${err.message}` }], isError: true };
+        trace.errors.push(`document.modelContext.getTools(): ${err.name || 'Error'}`);
       }
+
+      try {
+        for (const t of await inscribe.own.getTools()) {
+          trace.inscribe.push({
+            name: t.name, title: t.title, description: t.description,
+            inputSchema: t.inputSchema, annotations: t.annotations,
+            provenance: (t.annotations && t.annotations.untrustedContentHint)
+              ? 'inferred-from-dom' : 'inscribe-extension',
+            context: 'inscribe.own',
+          });
+        }
+      } catch (err) {
+        trace.errors.push(`inscribe.own.getTools(): ${err.name || 'Error'}`);
+      }
+
+      post('discovery', {
+        url: location.href,
+        title: document.title,
+        usingNative: inscribe.usingNative,
+        counts: { site: trace.site.length, inscribe: trace.inscribe.length },
+        ...trace,
+      });
+      return;
+    }
+
+    // ---- WebMCP invocation ------------------------------------------------
+    // Execution goes through executeTool(). There is deliberately no direct
+    // function-call fallback: if WebMCP is unavailable or the tool isn't
+    // registered, the agent cannot act. That is what makes it load-bearing.
+    if (data.type === 'execute') {
+      const { name, args, callId } = data.payload;
+      const inscribe = window.__inscribe;
+      let result;
+
+      try {
+        if (!inscribe || !inscribe.own || typeof inscribe.own.executeTool !== 'function') {
+          throw new Error('WebMCP unavailable: no ModelContext to execute through.');
+        }
+
+        // Resolve the tool by asking the contexts, in trust order: whatever
+        // the site declared wins over anything we inferred.
+        let owner = null;
+        let handle = null;
+
+        try {
+          const siteTools = await inscribe.page.getTools();
+          handle = siteTools.find((t) => t.name === name) || null;
+          if (handle) owner = inscribe.page;
+        } catch { /* page context may reject; fall through to ours */ }
+
+        if (!handle) {
+          const ownTools = await inscribe.own.getTools();
+          handle = ownTools.find((t) => t.name === name) || null;
+          if (handle) owner = inscribe.own;
+        }
+
+        if (!handle) {
+          result = {
+            content: [{ type: 'text', text: `No WebMCP tool named "${name}" is registered on this page.` }],
+            isError: true,
+          };
+        } else {
+          post('log', {
+            name,
+            detail: `executeTool via ${owner === inscribe.page ? 'document.modelContext' : 'inscribe.own'}`,
+          });
+          // Spec: executeTool resolves to a DOMString.
+          const raw = await owner.executeTool(handle, args || {});
+          try {
+            result = JSON.parse(raw);
+          } catch {
+            result = { content: [{ type: 'text', text: String(raw) }] };
+          }
+        }
+      } catch (err) {
+        result = {
+          content: [{ type: 'text', text: `${err.name || 'Error'}: ${err.message}` }],
+          isError: true,
+        };
+      }
+
       post('execute-result', { callId, name, result });
     }
   });
