@@ -108,7 +108,7 @@ npm install
 npm run eval
 ```
 
-35 deterministic assertions against a local fixture — no model, no network. The fixture is a page
+37 deterministic assertions against a local fixture — no model, no network. The fixture is a page
 that declares one tool natively *and* has plain forms, so both paths are covered at once. Four
 assertions exist to prove WebMCP is load-bearing: remove `getTools()` or `executeTool()` and
 discovery fails, execution fails, the DOM is untouched, and the dispatcher errors rather than
