@@ -69,6 +69,25 @@ chrome.commands.onCommand.addListener(async (command) => {
   });
 });
 
+function progress(tabId, detail, name) {
+  const port = ports.get(tabId);
+  if (port) {
+    try {
+      port.postMessage({ type: 'agent-progress', payload: { name: name || 'agent', detail } });
+    } catch { /* port closed mid-run */ }
+  }
+}
+
+async function getModels() {
+  try {
+    const resp = await fetch(AGENT_ENDPOINT, { method: 'GET' });
+    const data = await resp.json();
+    return data.models || [];
+  } catch {
+    return [];
+  }
+}
+
 function callTool(tabId, name, args) {
   const port = ports.get(tabId);
   if (!port) return Promise.resolve({ content: [{ type: 'text', text: 'Page relay not connected.' }], isError: true });
@@ -114,6 +133,8 @@ async function runAgent(tabId, goal, model) {
   const transcript = [];
 
   for (let step = 0; step < MAX_STEPS; step++) {
+    progress(tabId, `thinking (step ${step + 1}/${MAX_STEPS})`);
+
     let data;
     try {
       const resp = await fetch(AGENT_ENDPOINT, {
@@ -122,20 +143,26 @@ async function runAgent(tabId, goal, model) {
         body: JSON.stringify({ messages, tools: schemas, model }),
       });
       data = await resp.json();
-      if (!resp.ok) return { ok: false, error: data.message || `HTTP ${resp.status}`, transcript };
+      if (!resp.ok) {
+        progress(tabId, `error: ${data.message || resp.status}`);
+        return { ok: false, error: data.message || `HTTP ${resp.status}`, transcript };
+      }
     } catch (err) {
+      progress(tabId, `network error: ${err.message}`);
       return { ok: false, error: err.message, transcript };
     }
 
     messages.push(...(data.responseMessages || []));
 
     if (!data.toolCalls || !data.toolCalls.length) {
+      progress(tabId, 'done');
       return { ok: true, text: data.text || '', transcript };
     }
 
     const parts = [];
     for (const call of data.toolCalls) {
       transcript.push({ tool: call.toolName, args: call.input });
+      progress(tabId, `calling ${JSON.stringify(call.input).slice(0, 80)}`, call.toolName);
       const result = await callTool(tabId, call.toolName, call.input);
       parts.push({
         type: 'tool-result',
@@ -147,8 +174,14 @@ async function runAgent(tabId, goal, model) {
     messages.push({ role: 'tool', content: parts });
   }
 
+  progress(tabId, `stopped at step limit (${MAX_STEPS})`);
   return { ok: false, error: `Stopped after ${MAX_STEPS} steps.`, transcript };
 }
+
+// Inspection surface for the worker's own DevTools console (and for automated
+// tests). This lives inside the extension's worker context — page scripts have
+// no path to it.
+self.__agentforge = { runAgent, getModels, callTool, tools, ports };
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || !msg.type) return;
@@ -156,6 +189,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'GET_STATE') {
     const tabId = msg.tabId ?? (sender.tab && sender.tab.id);
     sendResponse(tools.get(tabId) || { tools: [], siteTools: [] });
+    return true;
+  }
+
+  if (msg.type === 'GET_MODELS') {
+    getModels().then((models) => sendResponse({ models }));
     return true;
   }
 

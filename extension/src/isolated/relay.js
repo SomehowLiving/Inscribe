@@ -38,6 +38,11 @@
         if (!msg || !msg.type) return;
         if (msg.type === 'execute') toPage('execute', msg.payload);
         if (msg.type === 'scan') toPage('scan', {});
+        if (msg.type === 'agent-progress') {
+          state.log.unshift({ ...msg.payload, time: new Date().toLocaleTimeString() });
+          state.log = state.log.slice(0, 100);
+          emit();
+        }
       });
       state.port.onDisconnect.addListener(() => {
         state.port = null;

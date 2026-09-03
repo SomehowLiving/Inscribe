@@ -73,9 +73,20 @@
       button.no { background:transparent; }
       .hidden { display:none !important; }
       footer { padding:7px 11px; border-top:1px solid #2a2a3a; background:#10101a;
-        display:flex; gap:7px; }
-      footer button { flex:1; padding:5px; font-size:11px; border-radius:6px;
+        display:flex; flex-direction:column; gap:6px; }
+      .frow { display:flex; gap:6px; }
+      footer button { padding:5px 9px; font-size:11px; border-radius:6px;
         border:1px solid #2a2a3a; background:#1a1a26; color:#c8c8dc; cursor:pointer; }
+      footer button:disabled { opacity:.5; cursor:not-allowed; }
+      #run { background:rgba(0,212,255,.14); border-color:#00d4ff; color:#00d4ff; font-weight:600; }
+      #goal { flex:1; min-width:0; background:#0b0b12; border:1px solid #2a2a3a;
+        border-radius:6px; color:#e6e6ee; font-size:11.5px; padding:5px 8px; outline:none; }
+      #goal:focus { border-color:#00d4ff; }
+      #model { background:#0b0b12; border:1px solid #2a2a3a; border-radius:6px;
+        color:#c8c8dc; font-size:10px; padding:4px; max-width:150px; }
+      #status { font-size:10.5px; color:#8b8ba7; min-height:13px; line-height:1.35; }
+      #status.err { color:#ff6b6b; }
+      #status.ok { color:#00ff88; }
     </style>
     <button class="launcher" title="AgentForge">◆</button>
     <div class="panel hidden">
@@ -92,7 +103,17 @@
         <div class="log" id="log"></div>
       </div>
       <footer>
-        <button id="rescan">Re-scan page</button>
+        <div class="frow">
+          <input id="goal" type="text" autocomplete="off"
+                 placeholder="Tell the agent what to do on this page…" />
+          <button id="run">Run</button>
+        </div>
+        <div class="frow">
+          <select id="model" title="Model"></select>
+          <button id="rescan">Re-scan</button>
+          <button id="stop" disabled>Stop</button>
+        </div>
+        <div id="status"></div>
       </footer>
     </div>
     <div class="confirm hidden" id="confirm">
@@ -115,6 +136,82 @@
   launcher.onclick = () => { panel.classList.remove('hidden'); launcher.classList.add('hidden'); };
   $('.x').onclick = () => { panel.classList.add('hidden'); launcher.classList.remove('hidden'); };
   $('#rescan').onclick = () => window.__agentforgeRelay && window.__agentforgeRelay.rescan();
+
+  function setStatus(text, cls) {
+    const el = $('#status');
+    el.className = cls || '';
+    el.textContent = text || '';
+  }
+
+  let running = false;
+  function setRunning(on) {
+    running = on;
+    $('#run').disabled = on;
+    $('#goal').disabled = on;
+    $('#model').disabled = on;
+    $('#stop').disabled = !on;
+  }
+
+  async function loadModels() {
+    try {
+      const res = await chrome.runtime.sendMessage({ type: 'GET_MODELS' });
+      const sel = $('#model');
+      sel.textContent = '';
+      const models = (res && res.models) || [];
+      if (!models.length) {
+        const o = document.createElement('option');
+        o.textContent = 'No model configured';
+        o.disabled = true;
+        sel.appendChild(o);
+        $('#run').disabled = true;
+        setStatus('No model provider reachable — the agent backend has no keys configured.', 'err');
+        return;
+      }
+      for (const m of models) {
+        const o = document.createElement('option');
+        o.value = m.id;
+        o.textContent = m.label;
+        sel.appendChild(o);
+      }
+    } catch (err) {
+      setStatus(`Could not load models: ${err.message}`, 'err');
+    }
+  }
+
+  async function run() {
+    const goal = $('#goal').value.trim();
+    const model = $('#model').value;
+    if (!goal || running) return;
+
+    setRunning(true);
+    setStatus('Starting…');
+    try {
+      const res = await chrome.runtime.sendMessage({ type: 'RUN_AGENT', goal, model });
+      if (!res) {
+        setStatus('No response from the extension worker.', 'err');
+      } else if (res.ok) {
+        setStatus(res.text ? res.text.slice(0, 400) : 'Done.', 'ok');
+        $('#goal').value = '';
+      } else {
+        setStatus(res.error || 'Agent failed.', 'err');
+      }
+    } catch (err) {
+      setStatus(err.message, 'err');
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  $('#run').onclick = run;
+  $('#goal').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); run(); }
+  });
+  // The worker owns the loop, so "stop" abandons the UI wait rather than
+  // pretending to cancel mid-flight — honest about what it does.
+  $('#stop').onclick = () => {
+    setRunning(false);
+    setStatus('Stopped watching. A step already in flight may still finish.', 'err');
+  };
 
   function toolCard(t) {
     const el = document.createElement('div');
@@ -221,6 +318,7 @@
   function mount() {
     (document.body || document.documentElement).appendChild(host);
     if (window.__agentforgeRelay) window.__agentforgeRelay.subscribe(render);
+    loadModels();
   }
 
   if (document.readyState === 'loading') {
