@@ -77,6 +77,8 @@
       .badge { font-family:var(--mono); font-size:9px; letter-spacing:.06em;
         text-transform:uppercase; padding:1px 5px; border:1px solid; }
       .declared { color:var(--sage); border-color:rgba(138,154,114,.45); }
+      .ext { color:#8fb4c9; border-color:rgba(143,180,201,.45); }
+      .ro { color:var(--faint); border-color:var(--rule); }
       .inferred { color:var(--amber); border-color:rgba(199,154,62,.45); }
       .sens { color:#d99a92; border-color:rgba(176,69,58,.5); }
       .conf { margin-left:auto; font-family:var(--mono); font-size:9.5px;
@@ -142,12 +144,12 @@
         <button class="x" title="Close">×</button>
       </header>
       <div class="body">
-        <h4>Tinker with this page <span id="ce">0 edits</span></h4>
-        <div id="cosmetic"></div>
-        <h4>Site-declared tools <span id="cs">0</span></h4>
+        <h4>Declared by this website <span id="cs">0</span></h4>
         <div id="site"></div>
-        <h4>Synthesized from this page <span id="cc">0</span></h4>
+        <h4>Inferred by Inscribe from the page <span id="cc">0</span></h4>
         <div id="tools"></div>
+        <h4>Inscribe capabilities <span id="ce">0 edits</span></h4>
+        <div id="cosmetic"></div>
         <h4>Activity</h4>
         <div class="log" id="log"></div>
       </div>
@@ -192,7 +194,12 @@
   const panel = $('.panel');
   const launcher = $('.launcher');
 
-  launcher.onclick = () => { panel.classList.remove('hidden'); launcher.classList.add('hidden'); };
+  launcher.onclick = () => {
+    panel.classList.remove('hidden');
+    launcher.classList.add('hidden');
+    // Populate the trace via real WebMCP discovery rather than a cached list.
+    if (window.__inscribeRelay) window.__inscribeRelay.discover();
+  };
   $('.x').onclick = () => { panel.classList.add('hidden'); launcher.classList.remove('hidden'); };
   $('#rescan').onclick = () => window.__inscribeRelay && window.__inscribeRelay.rescan();
 
@@ -344,6 +351,58 @@
     setStatus('Stopped watching. A step already in flight may still finish.', 'err');
   };
 
+  function provenanceCard(t) {
+    const el = document.createElement('div');
+    el.className = 'tool';
+    const n = document.createElement('div');
+    n.className = 'n';
+    n.textContent = t.name;
+    const d = document.createElement('div');
+    d.className = 'd';
+    d.textContent = t.title || t.description || '';
+    const row = document.createElement('div');
+    row.className = 'row';
+    const p = PROVENANCE[t.provenance] || { label: t.provenance, cls: 'inferred' };
+    const badge = document.createElement('span');
+    badge.className = `badge ${p.cls}`;
+    badge.textContent = p.label;
+    row.appendChild(badge);
+    if (t.annotations && t.annotations.readOnlyHint) {
+      const ro = document.createElement('span');
+      ro.className = 'badge ro';
+      ro.textContent = 'read-only';
+      row.appendChild(ro);
+    }
+    const ctx = document.createElement('span');
+    ctx.className = 'conf';
+    ctx.textContent = t.context;
+    row.appendChild(ctx);
+    el.append(n, d, row);
+    return el;
+  }
+
+  function renderLog(state) {
+    const log = $('#log');
+    log.textContent = '';
+    if (!state.log.length) {
+      const e = document.createElement('div');
+      e.className = 'empty';
+      e.textContent = 'No tool calls yet.';
+      log.appendChild(e);
+      return;
+    }
+    for (const l of state.log.slice(0, 40)) {
+      const div = document.createElement('div');
+      const t = document.createElement('span');
+      t.className = 't';
+      t.textContent = l.time || '';
+      const m = document.createElement('span');
+      m.textContent = `${l.name} — ${l.detail}`;
+      div.append(t, m);
+      log.appendChild(div);
+    }
+  }
+
   function toolCard(t) {
     const el = document.createElement('div');
     el.className = 'tool';
@@ -375,8 +434,50 @@
     return el;
   }
 
+  const PROVENANCE = {
+    'site-declared': { label: 'declared by site', cls: 'declared' },
+    'inferred-from-dom': { label: 'inferred · needs confirm', cls: 'inferred' },
+    'inscribe-extension': { label: 'Inscribe capability', cls: 'ext' },
+  };
+
   function render(state) {
     $('#mode').textContent = state.usingNative ? 'native WebMCP' : 'polyfilled';
+
+    // Provenance comes from WHICH ModelContext answered getTools(), so the
+    // panel cannot claim a site declared something it didn't.
+    const d = state.discovery;
+    if (d) {
+      const declared = d.site || [];
+      const fromCtx = d.inscribe || [];
+      const inferred = fromCtx.filter((t) => t.provenance === 'inferred-from-dom');
+      const ours = fromCtx.filter((t) => t.provenance === 'inscribe-extension');
+
+      const fill = (sel, list, empty) => {
+        const host = $(sel);
+        host.textContent = '';
+        if (!list.length) {
+          const e = document.createElement('div');
+          e.className = 'empty';
+          e.textContent = empty;
+          host.appendChild(e);
+          return;
+        }
+        for (const t of list) host.appendChild(provenanceCard(t));
+      };
+
+      $('#cs').textContent = String(declared.length);
+      fill('#site', declared,
+        'None. This site does not speak WebMCP, so Inscribe falls back to inferring capabilities from its markup.');
+      $('#cc').textContent = String(inferred.length);
+      fill('#tools', inferred, 'Nothing inferable — no labelled forms or named controls outside navigation.');
+      fill('#cosmetic', ours, 'Tinker engine not loaded on this page.');
+      const e = state.edits;
+      const n = e ? e.restyled + e.hidden + e.retexted + (e.swappedImages || 0) : 0;
+      $('#ce').textContent = `${n} edit${n === 1 ? '' : 's'}`;
+
+      renderLog(state);
+      return;
+    }
 
     const site = $('#site');
     site.textContent = '';

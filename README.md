@@ -1,118 +1,140 @@
 # Inscribe
 
-An agent-native web IDE built on [WebMCP](https://github.com/webmachinelearning/webmcp). The
-file system, code execution, terminal, image generation and deployment aren't just UI features —
-they're a `inscribe.*` tool catalog registered via `document.modelContext`. A human can click
-around it, but an AI agent can *operate* it directly, and the human watches every tool call
-land in real time.
+**Native WebMCP when the site speaks it. Inferred capabilities when it doesn't.**
 
-**Live:** https://studio-bay-omega.vercel.app
+Inscribe is two things built on [WebMCP](https://github.com/webmachinelearning/webmcp): a browser
+extension that lets an agent operate and tinker with any website, and a hosted workshop
+(`studio/`) that is itself a WebMCP site.
 
-## Why
+**Live studio:** https://studio-bay-omega.vercel.app
+**Extension:** load `extension/` unpacked — see [extension/README.md](extension/README.md)
 
-Most sites are passive — they wait for clicks. Agents visiting them screenshot, guess at
-pixel positions, and simulate clicks; one CSS change breaks the flow. WebMCP inverts that:
-the site *declares its capabilities* and the agent calls them by name with structured
-arguments.
+## Why browser agents struggle with websites
 
-Inscribe is that inversion applied to an IDE. The tool layer is primary; the UI is
-a projection of it. Nothing happens in the interface that isn't also a tool call an agent
-could have made instead — which is what makes the human a genuine spectator and supervisor
-rather than a bystander.
+An agent handed a web page has to work backwards from pixels: screenshot it, guess which box is
+the search field, simulate a click, screenshot again to see whether anything happened. One CSS
+change breaks the chain. Chrome's own framing is that this "leaves each step open to
+interpretation by the agent."
 
-## The 12 tools
+WebMCP inverts it. The site *declares* its capabilities as named tools with JSON Schema inputs, and
+the agent calls them — acting on meaning instead of coordinates.
 
-| Tool | What it does |
-|---|---|
-| `inscribe.file.list` / `read` / `write` / `delete` / `mkdir` | CRUD on an in-browser virtual file system (localStorage-backed) |
-| `inscribe.code.execute` | Runs JS in a sandboxed iframe, captures console output |
-| `inscribe.preview.refresh` | Re-renders the live preview, inlining CSS/JS |
-| `inscribe.terminal.exec` | Runs a **real shell command** in an ephemeral [Vercel Sandbox](https://vercel.com/docs/vercel-sandbox) microVM — isolated from the server's own environment and secrets |
-| `inscribe.chat.send` | Posts into the human-visible Agent Chat panel |
-| `inscribe.system.info` | IDE metadata and tool count |
-| `inscribe.image.generate` | Real image generation via an OpenRouter image model; falls back to a placeholder SVG if unavailable |
-| `inscribe.deploy` | Creates a **real deployment** of what the agent built, via the Vercel REST API |
+## The problem Inscribe addresses
 
-## Architecture
+WebMCP is real but young: Chrome 149 and Edge 150 origin trials, no browser has shipped it, WebKit
+has filed an `oppose` position. So today **almost no site declares anything**. An agent that can
+only use native WebMCP can operate approximately nothing.
+
+Inscribe handles both cases, and keeps them strictly separate.
+
+### Path 1 — a site that speaks WebMCP
 
 ```
-Agent (LLM)  ──►  /api/agent  ──►  provider (Groq / OpenRouter / Google / NVIDIA)
-                      │
-                      ▼  returns tool calls, does NOT execute them
-              real-agent.js (browser)
-                      │
-                      ▼  executes for real
-              webmcp.js  ──►  document.modelContext.registerTool()
-                      │
-                      ▼
-              VFS · sandbox · preview · terminal · deploy
-                      │
-                      ▼
-              UI panels + WebMCP Inspector (live call log)
+Website declares its own tools
+        ↓  document.modelContext.registerTool()
+Inscribe discovers them          getTools()
+        ↓
+Agent invokes one                executeTool()
+        ↓
+The site's own logic runs
+        ↓
+Visible state change + structured result
 ```
 
-The model call happens server-side (keys never reach the browser). Tool **execution** happens
-client-side against the real VFS and UI — so the server never touches application state, it
-only decides what to call next. Tools are registered with the AI SDK *without* an `execute`
-function, which is what makes the SDK hand back tool-call requests instead of running them.
+These tools are trusted: the author wrote them, they mean what they say, and Inscribe runs them
+without interposing itself.
 
-### Two drivers, same tools
+### Path 2 — a site that declares nothing
 
-- **Demo Agent** (`demo-agent.js`) — a fixed script. Free, deterministic, no API key. Proves
-  the tool layer works.
-- **Real Agent** (`real-agent.js`) — a genuine LLM loop. You type a goal; the model reasons
-  over the live tool schemas and decides what to call. Retries transient failures (network,
-  5xx) up to 3 times with backoff; caps at 15 steps.
+```
+Website's DOM
+        ↓  deterministic synthesis (no model call)
+Candidate tools + unique selectors
+        ↓  registered in Inscribe's OWN context, marked untrusted
+Agent invokes one                executeTool()
+        ↓
+Human confirmation gate
+        ↓
+Page changes, or the tool refuses
+```
 
-### Model options
+### Why the two paths are separate
 
-Eight models across four providers, each verified against its provider's live catalog for
-tool-calling support. The dropdown only lists providers whose key is actually configured.
+`document.modelContext` means *"what this document declares."* If Inscribe registered its guesses
+there, any other agent on the page — Chrome's built-in one, ChatGPT Desktop — would read them as
+the site's own words. So Inscribe never writes to the page's context. Its tools live in
+`window.__inscribe.own`, a second ModelContext with the same three-method surface.
 
-## Run it
+Provenance in the UI is derived from **which context answered `getTools()`**, not from a flag
+anyone maintains by hand:
+
+| Label | Source | Trust |
+|---|---|---|
+| declared by site | `document.modelContext` | trusted; runs directly |
+| inferred by Inscribe | `inscribe.own`, `untrustedContentHint: true` | needs human confirmation |
+| Inscribe capability | `inscribe.own` | extension powers over the page |
+
+Inscribe does **not** "add WebMCP to every website." It reads WebMCP where it exists and infers
+candidates where it doesn't, labelled as inferences.
+
+## What you can do
+
+**On any site** (extension): describe a change and watch it happen — theme it, restyle parts, hide
+things, rewrite text, swap images, or annotate it with highlights, notes and arrows. Edits persist
+per origin and are undoable. Where the site has real forms, the agent can fill them.
+
+**In the studio**: ten `inscribe.*` tools over a browser file system, a sandboxed JS runner, a real
+shell in an ephemeral Linux VM, image generation, and deployment to a live URL.
+
+## Safety model
+
+Two tiers, because a restyle and a deployment are not comparable:
+
+- **Cosmetic** (`inscribe.ui.*`, `inscribe.draw.*`) — applies immediately, undoable, no prompt.
+  Confirming every "make it darker" would make the product unusable.
+- **Consequential** — requires a human click the agent has no way to make, and fails closed if
+  unanswered. Covers inferred page actions, plus `file.delete`, `terminal.exec`,
+  `image.generate` (spends money) and `deploy` in the studio.
+
+Page-derived text is treated as data, never instruction: names and descriptions are stripped of
+control characters and truncated to Chrome's budgets (30 / 500 / 150 chars), and the page title and
+URL reach the model inside an explicit untrusted block. Password, CVV and SSN-shaped fields are
+never exposed; a form left unable to succeed without one is withheld rather than offered broken.
+
+## Evals
 
 ```bash
-cd studio
-cp .env.example .env      # optional — fill in whichever providers you have
 npm install
-python3 -m http.server 3000   # static only: UI + demo agent work, /api/* won't
+npm run eval
 ```
 
-For the full experience (real agent, sandboxed exec, deploy) the `/api/*` functions need a
-Vercel runtime:
+35 deterministic assertions against a local fixture — no model, no network. The fixture is a page
+that declares one tool natively *and* has plain forms, so both paths are covered at once. Four
+assertions exist to prove WebMCP is load-bearing: remove `getTools()` or `executeTool()` and
+discovery fails, execution fails, the DOM is untouched, and the dispatcher errors rather than
+falling back to a direct call.
 
-```bash
-npx vercel dev
-```
+## Repository
 
-## WebMCP notes
-
-Written against the current spec, which is worth stating precisely because a lot of
-secondary material online is stale:
-
-- The API is **`document.modelContext`**, not `navigator.modelContext` (moved to `Document`
-  in [PR #184](https://github.com/webmachinelearning/webmcp/pull/184), May 2026). We prefer
-  `document` and only fall back to `navigator` for older polyfills.
-- The surface is exactly three methods plus one event: `registerTool()`, `getTools()`,
-  `executeTool()`, `toolchange`. Names like `provideContext()` or `unregisterTool()` are
-  stale draft vocabulary and don't exist.
-- `registerTool()` returns a Promise that rejects with `NotAllowedError` when the `tools`
-  permissions policy denies it — handled here rather than left as an unhandled rejection.
-- Unregistration is via `AbortSignal`, not a method.
-- Status: Chrome 149 and Edge 150 **origin trials** (enable locally with
-  `chrome://flags/#enable-webmcp-testing`). Not shipped in any browser; WebKit has filed an
-  `oppose` position and Mozilla `neutral`. This is incubation-stage tech.
+| Path | |
+|---|---|
+| `extension/` | MV3 extension — bootstrap, synthesizer, tinker, annotate, registrar, overlay, worker |
+| `studio/` | The hosted WebMCP site and its agent loop |
+| `tests/` | Eval suite + fixture |
+| `repos/` | Reference clones (spec, Dark Reader, VisBug, AgentBoard…), gitignored |
 
 ## Known limitations
 
-- `inscribe.deploy` uses a project-scoped token, so agent-built sites land as new deployments
-  within one Vercel project rather than separate projects.
-- Real image generation needs OpenRouter credits; without them it silently falls back to a
-  placeholder SVG.
-- The `/api/*` endpoints are unauthenticated. Fine for a demo; they'd need auth or rate
-  limiting before any real exposure.
-- `inscribe.terminal.exec` is bounded (~20s, 8KB output) and its long-command cutoff comes from
-  the sandbox lifetime rather than the per-command timeout.
+- Native WebMCP needs `chrome://flags/#enable-webmcp-testing` or a site-served trial token. An
+  extension cannot enable it for a third-party origin, so Inscribe brings its own agent.
+- Inferred tools are guesses. Bare links are dropped below a confidence floor, so link-heavy pages
+  yield forms only, and actions are capped at 25 per page.
+- Cross-origin iframes are not scanned (`all_frames: false`).
+- `smartdark` costs ~90ms and ~100KB of generated CSS on a large article and can miss colours
+  applied after the scan, which is why filter-based `dark` remains the default.
+- Studio's `/api/*` endpoints are unauthenticated — fine for a demo, not for exposure.
+- The studio's `deploy` token is scoped to one Vercel project, so agent-built pages land as
+  deployments within it rather than separate projects.
 
 ## License
 

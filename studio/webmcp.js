@@ -226,7 +226,15 @@
           properties: { path: { type: 'string' }, content: { type: 'string' } },
           required: ['path', 'content'],
         },
-        ({ path, content }) => vfs.write(path, content)
+        ({ path, content }) => {
+          const res = vfs.write(path, content);
+          // Chrome's guidance: update interface state on completion, because
+          // the agent plans its next step from what it can see. This is why
+          // there is no separate preview.refresh tool to forget to call.
+          app.refreshPreview('/project');
+          return res;
+        },
+        { title: 'Write a file' }
       );
 
       this.define(
@@ -241,49 +249,24 @@
         'inscribe.file.mkdir',
         'Create a directory.',
         { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
-        ({ path }) => vfs.mkdir(path)
+        ({ path }) => vfs.mkdir(path),
+        { title: 'Create a directory' }
       );
 
       this.define(
         'inscribe.code.execute',
-        'Execute a JavaScript snippet in the sandboxed preview iframe and return console output plus the result.',
+        'Run a JavaScript snippet in this page\u2019s sandboxed iframe and return its console output and value. For shell commands use inscribe.terminal.exec instead.',
         { type: 'object', properties: { code: { type: 'string' } }, required: ['code'] },
-        ({ code }) => this.executeInSandbox(code)
-      );
-
-      this.define(
-        'inscribe.preview.refresh',
-        'Re-render the live preview from the current project files.',
-        { type: 'object', properties: { path: { type: 'string' } } },
-        ({ path }) => {
-          app.refreshPreview(path || '/project');
-          return { ok: true };
-        }
+        ({ code }) => this.executeInSandbox(code),
+        { title: 'Run JavaScript', untrustedOutput: true }
       );
 
       this.define(
         'inscribe.terminal.exec',
-        'Actually run a shell command, isolated in an ephemeral Vercel Sandbox VM (not this server), and print its real output to the Terminal panel.',
+        'Run a shell command in a fresh isolated Linux VM and return its real output. For JavaScript in this page use inscribe.code.execute instead.',
         { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] },
         ({ command }) => this.execCommand(command),
         { title: 'Run a shell command', consequential: true, untrustedOutput: true }
-      );
-
-      this.define(
-        'inscribe.chat.send',
-        'Post a message into the Agent Chat panel, visible to the human.',
-        {
-          type: 'object',
-          properties: {
-            message: { type: 'string' },
-            type: { type: 'string', enum: ['info', 'success', 'warning', 'error'] },
-          },
-          required: ['message'],
-        },
-        ({ message, type }) => {
-          app.showChatMessage(message, type || 'info');
-          return { ok: true };
-        }
       );
 
       this.define(
@@ -311,7 +294,8 @@
           },
           required: ['prompt', 'filename'],
         },
-        ({ prompt, filename, dir }) => this.generateImage(prompt, filename, dir || '/project')
+        ({ prompt, filename, dir }) => this.generateImage(prompt, filename, dir || '/project'),
+        { title: 'Generate an image', consequential: true, untrustedOutput: true }
       );
 
       this.define(

@@ -53,7 +53,7 @@ footer{padding:34px 0 60px;font-family:var(--mono);font-size:10.5px;color:var(--
     <p class="standfirst">Every character of this page was placed through WebMCP tool
     calls. No hand touched the markup; the tools were the only way in.</p>
   </header>
-  <p class="rule-note">inscribe.file.write &rarr; inscribe.preview.refresh &rarr; inscribe.deploy</p>
+  <p class="rule-note">inscribe.file.write &rarr; inscribe.image.generate &rarr; inscribe.deploy</p>
   <main>
     <section>
       <h2>Capabilities, not coordinates</h2>
@@ -114,7 +114,7 @@ document.querySelectorAll('main section').forEach((s) => spy.observe(s));`;
         },
       },
       {
-        desc: 'Generating hero image...',
+        desc: 'Requesting an image \u2014 needs your approval',
         action: async () => {
           await this.app.webmcp.callTool('inscribe.image.generate', {
             prompt: 'Abstract neon cyberpunk landscape with flowing data streams and holographic interfaces',
@@ -140,9 +140,14 @@ document.querySelectorAll('main section').forEach((s) => spy.observe(s));`;
         },
       },
       {
-        desc: 'Deploying to a live URL...',
+        desc: 'Publishing \u2014 needs your approval',
         action: async () => {
-          const result = await this.app.webmcp.deployProject('/project', 'inscribe-demo');
+          // Through the tool, not the internal method, so the consent gate
+          // applies to the demo exactly as it does to a real agent.
+          const raw = await this.app.webmcp.callTool('inscribe.deploy', {
+            path: '/project', name: 'inscribe-demo',
+          });
+          const result = (raw && raw.content) ? { deployed: false, reason: raw.content[0].text } : raw;
           if (result.deployed) {
             this.app.webmcp.log(`Deployed: ${result.url}`, 'success');
           } else {

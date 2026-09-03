@@ -412,3 +412,7 @@ body {
   .quire-files { width: 100%; height: 150px; border-right: none; border-bottom: 1px solid var(--rule); }
   .quire-margin { display: none; }
 }
+
+/* The consent gate has to outrank the demo curtain, or the scripted run
+   would hide the very dialog it is asking you to answer. */
+#consent-overlay { z-index: 120; }

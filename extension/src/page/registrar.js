@@ -203,6 +203,7 @@
     return [
       {
         name: 'inscribe.ui.targets',
+        title: 'List tinkerable parts',
         description: 'List the parts of this page that can be restyled, hidden, or retitled. Call this first to learn what names are available.',
         inputSchema: { type: 'object', properties: {} },
         readOnly: true,
@@ -210,6 +211,7 @@
       },
       {
         name: 'inscribe.ui.theme',
+        title: 'Apply a page theme',
         description: 'Apply a whole-page theme. "dark" is fast filter inversion; "smartdark" instead recolours the page\u2019s own colours (slower, but leaves photos and brand colours alone \u2014 try it when "dark" looks wrong). Also "dimmed", "grayscale", "sepia", or "none" to remove. Prefer this over restyling backgrounds by hand — it recolours the rendered page, so it works even when the site paints its own backgrounds on inner containers.',
         inputSchema: {
           type: 'object',
@@ -220,7 +222,8 @@
       },
       {
         name: 'inscribe.ui.restyle',
-        description: 'Change the appearance of part of the page. Pass CSS as an object of property/value pairs, e.g. {"background":"#111","color":"#eee","font-size":"18px"}. Applies immediately and persists for this site.',
+        title: 'Restyle part of the page',
+        description: 'Change how part of the page looks. Pass CSS property/value pairs, e.g. {"background":"#111","color":"#eee","font-size":"18px","padding":"24px"}. Set deep:true for colours and type, which otherwise lose to the site\u2019s own rules. Applies immediately and persists for this site.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -233,40 +236,18 @@
           },
           required: ['target', 'css'],
         },
-        run: (a) => T().restyle(a.target, a.css, a.deep),
-      },
-      {
-        name: 'inscribe.ui.font',
-        description: 'Change typography for part of the page: size, family, weight, lineHeight, color. Reaches descendants, so it beats the site\u2019s own rules. Use for "bigger text", "more readable", "serif".',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            target: targetProp,
-            size: { type: 'string', description: 'e.g. "18px" or "1.2rem"' },
-            family: { type: 'string' },
-            weight: { type: 'string' },
-            lineHeight: { type: 'string', description: 'e.g. "1.7"' },
-            color: { type: 'string' },
-          },
-          required: ['target'],
+        run: (a) => {
+          // Typography and spacing reach descendants or the site's own rules
+          // win, so infer `deep` when the agent didn't ask for it explicitly.
+          const needsDeep = Object.keys(a.css || {}).some((k) =>
+            /^(color|font|line-height|letter-spacing|text-)/.test(k)
+          );
+          return T().restyle(a.target, a.css, a.deep ?? needsDeep);
         },
-        run: (a) => T().font(a.target, a),
-      },
-      {
-        name: 'inscribe.ui.space',
-        description: 'Adjust padding, margin, or flex/grid gap of part of the page. Use for "more breathing room", "tighter", "wider margins".',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            target: targetProp,
-            padding: { type: 'string' }, margin: { type: 'string' }, gap: { type: 'string' },
-          },
-          required: ['target'],
-        },
-        run: (a) => T().space(a.target, a),
       },
       {
         name: 'inscribe.ui.move',
+        title: 'Move part of the page',
         description: 'Move part of the page to the top, bottom, left, or right of its container. Only reflows where the parent layout allows it.',
         inputSchema: {
           type: 'object',
@@ -280,18 +261,21 @@
       },
       {
         name: 'inscribe.ui.hide',
+        title: 'Hide part of the page',
         description: 'Hide part of the page from view (the "zap" action). Reversible with inscribe.ui.show or undo.',
         inputSchema: { type: 'object', properties: { target: targetProp }, required: ['target'] },
         run: (a) => T().hide(a.target),
       },
       {
         name: 'inscribe.ui.show',
+        title: 'Un-hide part of the page',
         description: 'Un-hide something previously hidden.',
         inputSchema: { type: 'object', properties: { target: targetProp }, required: ['target'] },
         run: (a) => T().show(a.target),
       },
       {
         name: 'inscribe.ui.setText',
+        title: 'Replace visible text',
         description: 'Replace the visible text of an element. Affects only your view of the page.',
         inputSchema: {
           type: 'object',
@@ -302,6 +286,7 @@
       },
       {
         name: 'inscribe.ui.swapImage',
+        title: 'Swap an image',
         description: 'Replace an image on the page with a different one. Works on <img> elements, or sets a background-image on anything else.',
         inputSchema: {
           type: 'object',
@@ -312,6 +297,7 @@
       },
       {
         name: 'inscribe.draw.highlight',
+        title: 'Highlight an element',
         description: 'Draw a highlight box around part of the page, optionally with a small label. Use to point something out.',
         inputSchema: {
           type: 'object',
@@ -322,6 +308,7 @@
       },
       {
         name: 'inscribe.draw.note',
+        title: 'Attach a note',
         description: 'Stick a note on the page, anchored beside an element. Use for commentary, review remarks, or reminders.',
         inputSchema: {
           type: 'object',
@@ -332,6 +319,7 @@
       },
       {
         name: 'inscribe.draw.arrow',
+        title: 'Draw an arrow',
         description: 'Draw an arrow from one part of the page to another, to show a relationship or a flow.',
         inputSchema: {
           type: 'object',
@@ -342,6 +330,7 @@
       },
       {
         name: 'inscribe.draw.pick',
+        title: 'Ask the human to point',
         description: 'Ask the human to click an element on the page, then annotate it. kind is "highlight" or "note". Use when you do not know which element they mean.',
         inputSchema: {
           type: 'object',
@@ -355,6 +344,7 @@
       },
       {
         name: 'inscribe.draw.export',
+        title: 'Export annotations',
         description: 'Export this page\u2019s annotations and appearance edits as a portable record that can be shared or re-imported.',
         inputSchema: { type: 'object', properties: {} },
         readOnly: true,
@@ -362,6 +352,7 @@
       },
       {
         name: 'inscribe.draw.list',
+        title: 'List annotations',
         description: 'List the annotations currently on this page.',
         inputSchema: { type: 'object', properties: {} },
         readOnly: true,
@@ -369,18 +360,21 @@
       },
       {
         name: 'inscribe.draw.clear',
+        title: 'Clear annotations',
         description: 'Remove every annotation from this page.',
         inputSchema: { type: 'object', properties: {} },
         run: () => A().clear(),
       },
       {
         name: 'inscribe.ui.undo',
+        title: 'Undo last change',
         description: 'Undo the last appearance change.',
         inputSchema: { type: 'object', properties: {} },
         run: () => T().undo(),
       },
       {
         name: 'inscribe.ui.reset',
+        title: 'Restore this site',
         description: 'Discard every appearance change made to this site and restore it to normal.',
         inputSchema: { type: 'object', properties: {} },
         run: () => T().reset(),
@@ -430,9 +424,23 @@
       }
     }
 
-    // Inferred page tools also go in OUR context, tagged untrusted — they are
+    // What the site declares for itself, read before we register anything.
+    // A declaration always beats an inference: if the author annotated a form
+    // with toolname, the browser (or the site) already owns that capability and
+    // duplicating it in our context would shadow the real schema with a guess.
+    let declaredNames = new Set();
+    try {
+      declaredNames = new Set((await inscribe.page.getTools()).map((t) => t.name));
+    } catch { /* page context may reject; nothing to defer to */ }
+
+    // Inferred page tools go in OUR context, tagged untrusted — they are
     // guesses about the site, not the site's own declarations.
+    let suppressed = 0;
     for (const c of candidates) {
+      if (declaredNames.has(safeName(c.name))) {
+        suppressed++;
+        continue;
+      }
       try {
         await inscribe.own.registerTool(
           {
@@ -454,9 +462,7 @@
     }
 
     // Also surface tools the SITE declared natively — always preferred.
-    // The site's own declarations, read (never written) from document.modelContext.
-    // Worth attempting even without native support: our polyfill lets a
-    // WebMCP-enabled site register there on a browser lacking the flag.
+    // Surface the site's declarations for the panel. Read, never written.
     let siteTools = [];
     try {
       {
@@ -476,7 +482,7 @@
       url,
       title,
       usingNative: inscribe.usingNative,
-      stats,
+      stats: { ...stats, suppressedAsDeclared: suppressed },
       siteTools,
       edits: window.__inscribeTinker ? window.__inscribeTinker.summary() : null,
       cosmeticTools: cosmetic.map((t) => ({

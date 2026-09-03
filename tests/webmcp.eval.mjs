@@ -132,6 +132,79 @@ const inferredForm = discovery.own.find((t) => t.name.startsWith('form_'));
 check('the plain form was inferred into a tool', Boolean(inferredForm),
   discovery.own.map((t) => t.name).join(','));
 
+check('the site\u2019s own declared tool was discovered', 
+  discovery.site.some((t) => t.name === 'place_order'),
+  `site tools: ${discovery.site.map((t) => t.name).join(',') || '(none)'}`);
+
+// --------------------------------------------------------- 1b. PROVENANCE
+section('1b. Provenance is derived from the answering context');
+
+const prov = await page.evaluate(async () => {
+  const out = await new Promise((resolve) => {
+    const onMsg = (e) => {
+      if (e.data?.source === 'inscribe-page' && e.data.type === 'discovery') {
+        window.removeEventListener('message', onMsg);
+        resolve(e.data.payload);
+      }
+    };
+    window.addEventListener('message', onMsg);
+    window.postMessage({ source: 'inscribe-ext', type: 'discover', payload: {} }, location.origin);
+    setTimeout(() => resolve(null), 5000);
+  });
+  return out && {
+    counts: out.counts,
+    siteProv: [...new Set((out.site || []).map((t) => t.provenance))],
+    ownProv: [...new Set((out.inscribe || []).map((t) => t.provenance))],
+    contexts: [...new Set([...(out.site || []), ...(out.inscribe || [])].map((t) => t.context))],
+  };
+});
+
+check('discovery trace is emitted', Boolean(prov));
+check('site tools are labelled site-declared',
+  prov?.siteProv.length === 1 && prov.siteProv[0] === 'site-declared', JSON.stringify(prov?.siteProv));
+check('Inscribe tools are labelled inferred or extension',
+  (prov?.ownProv || []).every((p) => p === 'inferred-from-dom' || p === 'inscribe-extension'),
+  JSON.stringify(prov?.ownProv));
+check('the two contexts are reported distinctly',
+  (prov?.contexts || []).includes('document.modelContext') && (prov?.contexts || []).includes('inscribe.own'),
+  JSON.stringify(prov?.contexts));
+
+// ------------------------------------------- 1c. NATIVE TOOL EXECUTION
+section('1c. Native declared tool executes through the site\u2019s own context');
+
+const nativeExec = await page.evaluate(async () => {
+  const i = window.__inscribe;
+  const tools = await i.page.getTools();
+  const handle = tools.find((t) => t.name === 'place_order');
+  if (!handle) return { missing: true };
+  const raw = await i.page.executeTool(handle, { product: 'Hammer', qty: 3 });
+  return {
+    raw: String(raw).slice(0, 90),
+    status: document.getElementById('status')?.textContent,
+    field: document.getElementById('pname')?.value,
+  };
+});
+check('native tool ran via document.modelContext.executeTool', !nativeExec.missing);
+check('the site\u2019s own logic produced a visible state change',
+  nativeExec.status === 'Order placed: 3 x Hammer', nativeExec.status);
+check('and it filled its own field', nativeExec.field === 'Hammer', nativeExec.field);
+check('native tool needed NO Inscribe confirmation (site is trusted)',
+  /Ordered 3 x Hammer/.test(nativeExec.raw), nativeExec.raw);
+
+// ------------------------------------- 1d. DECLARED BEATS INFERRED
+section('1d. A site declaration suppresses the competing inference');
+
+const collision = await page.evaluate(async () => {
+  const i = window.__inscribe;
+  const site = (await i.page.getTools()).map((t) => t.name);
+  const own = (await i.own.getTools()).map((t) => t.name);
+  return { site, own, overlap: own.filter((n) => site.includes(n)) };
+});
+check('no inferred tool duplicates a site-declared name',
+  collision.overlap.length === 0, `overlap: ${collision.overlap.join(',')}`);
+check('the declared name is still available from the site context',
+  collision.site.includes('place_order'), collision.site.join(','));
+
 // ------------------------------------------------------- 2. CHROME BUDGETS
 section('2. Chrome character budgets (30 name / 500 desc / 150 param)');
 
