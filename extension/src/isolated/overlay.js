@@ -137,6 +137,8 @@
         <button class="x" title="Close">×</button>
       </header>
       <div class="body">
+        <h4>Tinker with this page <span id="ce">0 edits</span></h4>
+        <div id="cosmetic"></div>
         <h4>Site-declared tools <span id="cs">0</span></h4>
         <div id="site"></div>
         <h4>Synthesized from this page <span id="cc">0</span></h4>
@@ -152,6 +154,8 @@
         </div>
         <div class="frow">
           <select id="model" title="Model"></select>
+          <button id="undo" title="Undo the last appearance change">Undo</button>
+          <button id="reset" title="Restore this site">Reset</button>
           <button id="rescan">Re-scan</button>
           <button id="stop" disabled>Stop</button>
         </div>
@@ -178,6 +182,19 @@
   launcher.onclick = () => { panel.classList.remove('hidden'); launcher.classList.add('hidden'); };
   $('.x').onclick = () => { panel.classList.add('hidden'); launcher.classList.remove('hidden'); };
   $('#rescan').onclick = () => window.__inscribeRelay && window.__inscribeRelay.rescan();
+
+  function cosmetic(name) {
+    // Tier-one tools need no gate, so call them straight down the execute channel.
+    if (window.__inscribeRelay) {
+      window.__inscribeRelay.execute(name, {}, `ui_${Date.now()}`);
+      setTimeout(() => window.__inscribeRelay.rescan(), 250);
+    }
+  }
+  $('#undo').onclick = () => cosmetic('inscribe.ui.undo');
+  $('#reset').onclick = () => {
+    setStatus('Restored this site to normal.', 'ok');
+    cosmetic('inscribe.ui.reset');
+  };
 
   function setStatus(text, cls) {
     const el = $('#status');

@@ -156,6 +156,90 @@
     };
   }
 
+  /**
+   * Tier one: cosmetic tools. These apply immediately with no confirmation —
+   * a restyle is reversible and undoable, and prompting for every "make it
+   * darker" would make the product unusable. Tier two (forms, clicks) still
+   * goes through requestConfirmation below.
+   */
+  function tinkerTools() {
+    const T = () => window.__inscribeTinker;
+    const targetProp = {
+      type: 'string',
+      description: 'A target name from inscribe.ui.targets, a landmark word like "header"/"sidebar"/"page", or a CSS selector.',
+    };
+    return [
+      {
+        name: 'inscribe.ui.targets',
+        description: 'List the parts of this page that can be restyled, hidden, or retitled. Call this first to learn what names are available.',
+        inputSchema: { type: 'object', properties: {} },
+        readOnly: true,
+        run: () => T().catalog(),
+      },
+      {
+        name: 'inscribe.ui.theme',
+        description: 'Apply a whole-page theme: "dark", "sepia", or "none" to remove it. Prefer this over restyling backgrounds by hand — it recolours the rendered page, so it works even when the site paints its own backgrounds on inner containers.',
+        inputSchema: {
+          type: 'object',
+          properties: { mode: { type: 'string', enum: ['dark', 'sepia', 'none'] } },
+          required: ['mode'],
+        },
+        run: (a) => T().theme(a.mode),
+      },
+      {
+        name: 'inscribe.ui.restyle',
+        description: 'Change the appearance of part of the page. Pass CSS as an object of property/value pairs, e.g. {"background":"#111","color":"#eee","font-size":"18px"}. Applies immediately and persists for this site.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            target: targetProp,
+            css: { type: 'object', description: 'CSS property/value pairs.' },
+            deep: {
+              type: 'boolean',
+              description: 'Also apply to everything inside the target. Needed for colours on real sites, where inner containers paint their own backgrounds.',
+            },
+          },
+          required: ['target', 'css'],
+        },
+        run: (a) => T().restyle(a.target, a.css, a.deep),
+      },
+      {
+        name: 'inscribe.ui.hide',
+        description: 'Hide part of the page from view (the "zap" action). Reversible with inscribe.ui.show or undo.',
+        inputSchema: { type: 'object', properties: { target: targetProp }, required: ['target'] },
+        run: (a) => T().hide(a.target),
+      },
+      {
+        name: 'inscribe.ui.show',
+        description: 'Un-hide something previously hidden.',
+        inputSchema: { type: 'object', properties: { target: targetProp }, required: ['target'] },
+        run: (a) => T().show(a.target),
+      },
+      {
+        name: 'inscribe.ui.setText',
+        description: 'Replace the visible text of an element. Affects only your view of the page.',
+        inputSchema: {
+          type: 'object',
+          properties: { target: targetProp, text: { type: 'string' } },
+          required: ['target', 'text'],
+        },
+        run: (a) => T().setText(a.target, a.text),
+      },
+      {
+        name: 'inscribe.ui.undo',
+        description: 'Undo the last appearance change.',
+        inputSchema: { type: 'object', properties: {} },
+        run: () => T().undo(),
+      },
+      {
+        name: 'inscribe.ui.reset',
+        description: 'Discard every appearance change made to this site and restore it to normal.',
+        inputSchema: { type: 'object', properties: {} },
+        run: () => T().reset(),
+      },
+    ];
+  }
+
   async function register() {
     const inscribe = window.__inscribe;
     if (!inscribe) return;
@@ -167,6 +251,33 @@
 
     const { candidates, stats, url, title } = window.__inscribeSynthesize.scan();
     state.candidates = candidates;
+
+    // Tier one — registered first so the model sees them before page actions.
+    const cosmetic = window.__inscribeTinker ? tinkerTools() : [];
+    state.cosmetic = cosmetic;
+    for (const t of cosmetic) {
+      try {
+        await inscribe.host.registerTool(
+          {
+            name: t.name,
+            description: t.description,
+            inputSchema: t.inputSchema,
+            annotations: { readOnlyHint: Boolean(t.readOnly), untrustedContentHint: true },
+            execute: async (args) => {
+              const result = await t.run(args || {});
+              post('log', {
+                name: t.name,
+                detail: result && result.ok === false ? `refused: ${result.error}` : 'applied',
+              });
+              return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+            },
+          },
+          { signal }
+        );
+      } catch (err) {
+        post('log', { name: t.name, detail: `register failed: ${err.message}` });
+      }
+    }
 
     for (const c of candidates) {
       try {
@@ -210,6 +321,15 @@
       usingNative: inscribe.usingNative,
       stats,
       siteTools,
+      edits: window.__inscribeTinker ? window.__inscribeTinker.summary() : null,
+      cosmeticTools: cosmetic.map((t) => ({
+        name: t.name,
+        description: t.description,
+        kind: 'cosmetic',
+        trust: 'cosmetic',
+        confidence: 1,
+        inputSchema: t.inputSchema,
+      })),
       tools: candidates.map((c) => ({
         name: c.name,
         description: c.description,
@@ -250,16 +370,25 @@
     }
     if (data.type === 'execute') {
       const { name, args, callId } = data.payload;
+      const cosmeticTool = (state.cosmetic || []).find((t) => t.name === name);
       const candidate = state.candidates.find((c) => c.name === name);
       let result;
-      if (!candidate) {
-        result = { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true };
-      } else {
-        try {
+      try {
+        if (cosmeticTool) {
+          // Tier one: no gate.
+          const out = await cosmeticTool.run(args || {});
+          post('log', {
+            name,
+            detail: out && out.ok === false ? `refused: ${out.error}` : 'applied',
+          });
+          result = { content: [{ type: 'text', text: JSON.stringify(out) }] };
+        } else if (candidate) {
           result = await executeCandidate(candidate, args || {});
-        } catch (err) {
-          result = { content: [{ type: 'text', text: `Tool threw: ${err.message}` }], isError: true };
+        } else {
+          result = { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true };
         }
+      } catch (err) {
+        result = { content: [{ type: 'text', text: `Tool threw: ${err.message}` }], isError: true };
       }
       post('execute-result', { callId, name, result });
     }

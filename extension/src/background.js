@@ -31,6 +31,7 @@ chrome.runtime.onConnect.addListener((port) => {
       tools.set(tabId, {
         tools: msg.payload.tools || [],
         siteTools: msg.payload.siteTools || [],
+        cosmeticTools: msg.payload.cosmeticTools || [],
         url: msg.payload.url,
         title: msg.payload.title,
       });
@@ -110,11 +111,15 @@ function callTool(tabId, name, args) {
  */
 async function runAgent(tabId, goal, model) {
   const entry = tools.get(tabId);
-  if (!entry || (!entry.tools.length && !entry.siteTools.length)) {
+  if (!entry || (!entry.tools.length && !entry.siteTools.length && !(entry.cosmeticTools || []).length)) {
     return { ok: false, error: 'No tools available on this page yet — try Re-scan.' };
   }
 
   const schemas = {};
+  // Cosmetic tools first — describing a look is the common case.
+  for (const t of (entry.cosmeticTools || [])) {
+    schemas[t.name] = { description: t.description, inputSchema: t.inputSchema || { type: 'object', properties: {} } };
+  }
   for (const t of entry.tools) {
     schemas[t.name] = { description: t.description, inputSchema: t.inputSchema || { type: 'object', properties: {} } };
   }
@@ -124,7 +129,10 @@ async function runAgent(tabId, goal, model) {
       role: 'user',
       content:
         `You are operating the web page "${entry.title}" (${entry.url}) through WebMCP tools.\n` +
-        `Tools whose names start with "form_" fill a form; "click_" activates a control.\n` +
+        `inscribe.ui.* tools change how the page looks for this user — call inscribe.ui.targets ` +
+        `first to learn what parts you can name. They apply instantly and are undoable.\n` +
+        `Tools starting "form_" fill a form and "click_" activates a control; those change real ` +
+        `state and need human confirmation.\n` +
         `Anything inferred from markup requires human confirmation, which may be declined — ` +
         `if a call is refused, stop and explain rather than retrying.\n\nTask: ${goal}`,
     },

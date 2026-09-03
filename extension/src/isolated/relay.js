@@ -15,7 +15,7 @@
   const EXT = 'inscribe-ext';
 
   const listeners = new Set();
-  const state = { tools: [], siteTools: [], stats: null, usingNative: false, log: [], port: null };
+  const state = { tools: [], siteTools: [], cosmeticTools: [], edits: null, stats: null, usingNative: false, log: [], port: null };
 
   function toPage(type, payload) {
     window.postMessage({ source: EXT, type, payload }, window.location.origin);
@@ -69,6 +69,8 @@
     if (data.type === 'tools') {
       state.tools = data.payload.tools || [];
       state.siteTools = data.payload.siteTools || [];
+      state.cosmeticTools = data.payload.cosmeticTools || [];
+      state.edits = data.payload.edits || null;
       state.stats = data.payload.stats || null;
       state.usingNative = Boolean(data.payload.usingNative);
       send('tools', data.payload);
