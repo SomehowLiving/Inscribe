@@ -12,6 +12,9 @@ node_modules/
 # Third-party reference clones (each has its own .git history)
 repos/
 
+# Capture/demo material — kept locally for recording, not committed
+demo/
+
 # OS / editor noise
 .DS_Store
 *.log
