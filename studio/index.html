@@ -40,7 +40,13 @@
       </aside>
 
       <main class="quire quire-main">
-        <div class="tabs" id="editor-tabs"></div>
+        <div class="tabs-row">
+          <div class="tabs" id="editor-tabs"></div>
+          <div class="view-toggle" role="group" aria-label="View">
+            <button id="view-source" class="vt active" type="button">Source</button>
+            <button id="view-preview" class="vt" type="button">Preview</button>
+          </div>
+        </div>
         <div class="leaf">
           <textarea id="editor" class="editor" spellcheck="false"></textarea>
           <iframe id="preview" class="preview" sandbox="allow-scripts allow-same-origin" title="Live preview"></iframe>

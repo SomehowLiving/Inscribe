@@ -40,6 +40,8 @@ class InscribeApp {
       demoBar: document.getElementById('demo-bar'),
       demoStatus: document.getElementById('demo-status'),
       sandboxFrame: document.getElementById('sandbox-frame'),
+      viewSource: document.getElementById('view-source'),
+      viewPreview: document.getElementById('view-preview'),
       agentForm: document.getElementById('agent-form'),
       agentGoal: document.getElementById('agent-goal'),
       agentModel: document.getElementById('agent-model'),
@@ -119,6 +121,9 @@ class InscribeApp {
       if (window.realAgent) window.realAgent.stop();
     };
 
+    this.els.viewSource.onclick = () => this.setView('source');
+    this.els.viewPreview.onclick = () => this.setView('preview');
+
     this.els.editor.addEventListener('input', () => {
       this.vfs.write(this.currentPath, this.els.editor.value);
     });
@@ -149,6 +154,22 @@ class InscribeApp {
       document.getElementById('consent-no').onclick = () => finish(false);
       setTimeout(() => finish(false), 90000);
     });
+  }
+
+  /** Switch between the source editor and the rendered preview. */
+  setView(which) {
+    const hasPreview = Boolean(this.els.preview.srcdoc);
+    const target = which === 'preview' && hasPreview ? 'preview' : 'source';
+    this.view = target;
+
+    this.els.editor.classList.toggle('hidden', target === 'preview');
+    this.els.preview.classList.toggle('active', target === 'preview');
+    this.els.viewSource.classList.toggle('active', target === 'source');
+    this.els.viewPreview.classList.toggle('active', target === 'preview');
+    this.els.viewPreview.disabled = !hasPreview;
+    this.els.viewPreview.title = hasPreview
+      ? 'Show the rendered project'
+      : 'Nothing to preview yet — /project needs an index.html';
   }
 
   setAgentBusy(busy) {
@@ -211,13 +232,10 @@ class InscribeApp {
     this.renderTabs();
     this.renderFileTree();
 
-    if (path.endsWith('.html') && this.els.preview.srcdoc) {
-      this.els.editor.classList.add('hidden');
-      this.els.preview.classList.add('active');
-    } else {
-      this.els.editor.classList.remove('hidden');
-      this.els.preview.classList.remove('active');
-    }
+    // Opening a file always shows its source. Preview is a view you choose,
+    // not something that hijacks the editor — otherwise an .html file could
+    // never be read or edited, only looked at.
+    this.setView(this.view || 'source');
   }
 
   renderTabs() {
@@ -253,6 +271,7 @@ class InscribeApp {
     }
 
     this.els.preview.srcdoc = html;
+    if (this.els.viewPreview) this.setView(this.view || 'source');
   }
 
   renderToolList() {

@@ -186,6 +186,27 @@ body {
 
 /* ── Editor / tabs ────────────────────────────────────── */
 
+.tabs-row {
+  display: flex; align-items: stretch; flex: none;
+  border-bottom: 1px solid var(--rule-soft);
+  background: var(--ink-sink);
+}
+.tabs-row .tabs { flex: 1; min-width: 0; border-bottom: none; }
+
+.view-toggle {
+  display: flex; flex: none; align-items: center;
+  padding: 0 8px; gap: 2px; border-left: 1px solid var(--rule-soft);
+}
+.vt {
+  background: none; border: 1px solid transparent; cursor: pointer;
+  color: var(--paper-faint); font-family: var(--mono); font-size: 10px;
+  letter-spacing: .08em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 2px;
+}
+.vt:hover { color: var(--paper-mute); }
+.vt.active { color: var(--vermilion); border-color: var(--rule); background: var(--ink); }
+.vt:disabled { opacity: .35; cursor: not-allowed; }
+
 .tabs {
   display: flex; overflow-x: auto; flex: none;
   border-bottom: 1px solid var(--rule-soft);

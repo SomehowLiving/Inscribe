@@ -127,8 +127,7 @@ document.querySelectorAll('main section').forEach((s) => spy.observe(s));`;
         desc: 'Refreshing live preview...',
         action: async () => {
           this.app.refreshPreview('/project');
-          this.app.els.editor.classList.add('hidden');
-          this.app.els.preview.classList.add('active');
+          this.app.setView('preview');
         },
       },
       {
