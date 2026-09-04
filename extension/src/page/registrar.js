@@ -351,6 +351,38 @@
         run: () => A().exportAll(),
       },
       {
+        name: 'inscribe.guide.walk',
+        title: 'Show me how',
+        description: 'Teach the human where things are instead of doing it for them: move a pointer to each place in turn, ring it, and say what it is for. Use this when someone asks how to do something, where something is, or to be shown around — rather than asking you to perform the action. Call inscribe.ui.targets first to learn what you can point at.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            steps: {
+              type: 'array',
+              description: 'The places to visit, in order.',
+              items: {
+                type: 'object',
+                properties: {
+                  target: { type: 'string', description: 'Target name, landmark word, or CSS selector' },
+                  say: { type: 'string', description: 'One short sentence explaining this step' },
+                },
+                required: ['target'],
+              },
+            },
+            pace: { type: 'number', description: 'Milliseconds to linger on each step. Default 2400.' },
+          },
+          required: ['steps'],
+        },
+        run: (a) => A().guide(a.steps, { pace: a.pace }),
+      },
+      {
+        name: 'inscribe.guide.stop',
+        title: 'Stop the walkthrough',
+        description: 'Stop a walkthrough that is currently running.',
+        inputSchema: { type: 'object', properties: {} },
+        run: () => A().stopGuide(),
+      },
+      {
         name: 'inscribe.draw.list',
         title: 'List annotations',
         description: 'List the annotations currently on this page.',

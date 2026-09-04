@@ -305,7 +305,125 @@
     }
   }, true);
 
+  // ---- Guided walkthrough ------------------------------------------------
+  // The "point at it and explain" mode. Instead of the agent doing the thing,
+  // it shows the human where the thing is — which is only trustworthy because
+  // the target came from a declared tool or a verified selector, not from
+  // guessing at pixels.
+  const guideState = { running: false, cursorEl: null, abort: null };
+
+  function cursor() {
+    if (guideState.cursorEl && guideState.cursorEl.isConnected) return guideState.cursorEl;
+    const c = el('div',
+      'position:absolute;top:0;left:0;width:26px;height:26px;pointer-events:none;' +
+      'z-index:2147483002;transition:transform 700ms cubic-bezier(.22,.61,.36,1);' +
+      'will-change:transform');
+    c.id = '__inscribe_cursor';
+    c.innerHTML =
+      '<svg width="26" height="26" viewBox="0 0 26 26">' +
+      '<circle cx="9" cy="9" r="8" fill="rgba(200,85,43,.25)"/>' +
+      '<path d="M4 2 L4 18 L8.5 13.5 L11.5 20 L14 18.8 L11 12.6 L17 12.2 Z" ' +
+      'fill="#c8552b" stroke="#17140f" stroke-width="1.1"/></svg>';
+    (document.body || document.documentElement).appendChild(c);
+    guideState.cursorEl = c;
+    return c;
+  }
+
+  function ping(x, y) {
+    const r = el('div',
+      `position:absolute;top:${y - 13}px;left:${x - 13}px;width:26px;height:26px;` +
+      'border:2px solid #c8552b;border-radius:50%;pointer-events:none;z-index:2147483001;' +
+      'opacity:.9;transition:transform 520ms ease-out,opacity 520ms ease-out');
+    (document.body || document.documentElement).appendChild(r);
+    requestAnimationFrame(() => {
+      r.style.transform = 'scale(2.6)';
+      r.style.opacity = '0';
+    });
+    setTimeout(() => r.remove(), 600);
+  }
+
+  function wait(ms, signal) {
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(resolve, ms);
+      if (signal) {
+        signal.addEventListener('abort', () => {
+          clearTimeout(t);
+          reject(new DOMException('Guide stopped', 'AbortError'));
+        }, { once: true });
+      }
+    });
+  }
+
   const api = {
+    /**
+     * Walk the human through a sequence of places on the page: move a cursor
+     * to each target, ring it, label it, and say what it's for.
+     */
+    async guide(steps, opts = {}) {
+      if (!Array.isArray(steps) || !steps.length) {
+        return { ok: false, error: 'steps must be a non-empty array of { target, say }.' };
+      }
+      if (guideState.running) return { ok: false, error: 'A walkthrough is already running.' };
+
+      guideState.running = true;
+      guideState.abort = new AbortController();
+      const { signal } = guideState.abort;
+      const pace = Math.max(900, Math.min(6000, Number(opts.pace) || 2400));
+      const walked = [];
+      const missing = [];
+      const c = cursor();
+      c.style.opacity = '1';
+
+      try {
+        for (let i = 0; i < steps.length; i++) {
+          const step = steps[i] || {};
+          const sel = resolve(step.target);
+          if (!sel) { missing.push(step.target); continue; }
+          let node = null;
+          try { node = document.querySelector(sel); } catch { /* invalid */ }
+          if (!node) { missing.push(step.target); continue; }
+
+          node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          await wait(420, signal);
+
+          const r = docRect(node);
+          const x = r.left + Math.min(r.width / 2, 60);
+          const y = r.top + r.height / 2;
+          c.style.transform = `translate(${x}px, ${y}px)`;
+          await wait(720, signal);
+          ping(x, y);
+
+          // Reuse the existing marks so a walkthrough leaves the same kind of
+          // trace as anything else the agent does.
+          const hl = api.highlight(sel, `${i + 1} of ${steps.length}`);
+          const note = step.say ? api.note(sel, step.say) : null;
+          walked.push({ step: i + 1, target: step.target, selector: sel });
+
+          await wait(pace, signal);
+          if (hl.ok) api.remove(hl.id);
+          if (note && note.ok) api.remove(note.id);
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') throw err;
+        return { ok: false, stopped: true, walked, error: 'Walkthrough stopped.' };
+      } finally {
+        guideState.running = false;
+        if (guideState.cursorEl) guideState.cursorEl.style.opacity = '0';
+      }
+
+      return {
+        ok: true,
+        walked,
+        ...(missing.length ? { skipped: missing, note: 'Targets not found on this page were skipped.' } : {}),
+      };
+    },
+
+    stopGuide() {
+      if (!guideState.running) return { ok: false, error: 'No walkthrough running.' };
+      guideState.abort.abort();
+      return { ok: true, stopped: true };
+    },
+
     /** Enter pick mode; resolves when the human clicks something or hits Escape. */
     pick(kind, opts = {}) {
       return new Promise((resolve) => {
