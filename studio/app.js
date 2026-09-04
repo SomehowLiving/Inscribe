@@ -40,6 +40,7 @@ class InscribeApp {
       demoBar: document.getElementById('demo-bar'),
       demoStatus: document.getElementById('demo-status'),
       sandboxFrame: document.getElementById('sandbox-frame'),
+      viewOpen: document.getElementById('view-open'),
       viewSource: document.getElementById('view-source'),
       viewPreview: document.getElementById('view-preview'),
       agentForm: document.getElementById('agent-form'),
@@ -123,6 +124,7 @@ class InscribeApp {
 
     this.els.viewSource.onclick = () => this.setView('source');
     this.els.viewPreview.onclick = () => this.setView('preview');
+    this.els.viewOpen.onclick = () => this.openBuilt('/project');
 
     this.els.editor.addEventListener('input', () => {
       this.vfs.write(this.currentPath, this.els.editor.value);
@@ -167,6 +169,7 @@ class InscribeApp {
     this.els.viewSource.classList.toggle('active', target === 'source');
     this.els.viewPreview.classList.toggle('active', target === 'preview');
     this.els.viewPreview.disabled = !hasPreview;
+    this.els.viewOpen.disabled = !hasPreview;
     this.els.viewPreview.title = hasPreview
       ? 'Show the rendered project'
       : 'Nothing to preview yet — /project needs an index.html';
@@ -256,9 +259,10 @@ class InscribeApp {
     }
   }
 
-  refreshPreview(path = '/project') {
+  /** Assemble /project into one self-contained document. */
+  buildProject(path = '/project') {
     const files = this.vfs.exportProject(path);
-    if (!files || !files['/index.html']) return;
+    if (!files || !files['/index.html']) return null;
 
     let html = files['/index.html'];
     if (files['/style.css']) {
@@ -269,6 +273,29 @@ class InscribeApp {
       html = html.replace(/<script[^>]*src=["']app\.js["'][^>]*><\/script>/i,
         `<script>${files['/app.js']}<\/script>`);
     }
+    return html;
+  }
+
+  /**
+   * Open what the agent built full-size in its own tab. The in-panel preview
+   * is only ~900px wide and shares the screen; judging a page by it is like
+   * judging a poster through a letterbox.
+   */
+  openBuilt(path = '/project') {
+    const html = this.buildProject(path);
+    if (!html) {
+      this.showChatMessage('Nothing to open yet — /project has no index.html.', 'warning');
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+    window.open(url, '_blank', 'noopener');
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    this.appendTerminal(`[preview] opened ${path} in a new tab`);
+  }
+
+  refreshPreview(path = '/project') {
+    const html = this.buildProject(path);
+    if (!html) return;
 
     this.els.preview.srcdoc = html;
     if (this.els.viewPreview) this.setView(this.view || 'source');
